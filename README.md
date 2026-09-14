@@ -1,108 +1,80 @@
-# React + Vite + Hono + Cloudflare Workers
+# Famala · 兑换码发放平台
 
-## Famala 本地计数器
+React + Vite + Hono + Cloudflare Workers，使用 Drizzle ORM 和 D1。无需注册账号，通过发码 Key 管理独立空间，通过领码 Key 分享兑换码。
 
-计数使用 Drizzle ORM 保存到本地 D1。页面打开时调用 `GET /api/count` 加载最新值，点击 count 按钮调用 `POST /api/count/increment`，使用 API 返回的值更新组件。所有页面共享一个计数，初始为 0；加一使用单条 SQL 原子执行。
+## 本地运行
+
+需要 Node.js 24（见 `.nvmrc`）。
 
 ```bash
-npm install
+npm ci
+cp .dev.vars.example .dev.vars
 npm run dev
 ```
 
-`predev` 会自动执行本地迁移。数据保存在 `.wrangler/state/`，刷新页面或重启服务不会清零。当前数据库 ID 是本地占位值，已禁用远程绑定和 Wrangler 遥测，无需 Cloudflare 账号或 Token。
+如果已有 `.dev.vars`，请合并配置，不要直接覆盖。访问 http://127.0.0.1:5173 。`predev` 自动应用本地 D1 迁移，数据保存在 `.wrangler/state/`，刷新或重启不会清空。
 
-- 表结构：`src/worker/db/schema.ts`
-- 修改表结构后：`npm run db:generate`，再运行 `npm run db:migrate`（仅本地）
-- 修改绑定后：`npm run cf-typegen`
-- 请求失败时页面显示错误，可使用 Reload count 重新读取当前值；不会自动重试加一请求。
+`.dev.vars.example` 包含 Cloudflare 官方公开测试密钥，仅用于本地开发。领取仍然调用 Cloudflare 的 Siteverify，因此需要网络访问 `challenges.cloudflare.com`。如果内嵌浏览器的验证组件无法加载，请使用 Chrome 打开本地地址；验证未通过时服务端不会发码。
 
-以下保留官方模板说明。云端部署需要另行创建并配置真实 D1 数据库。
+## 已实现
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/templates/tree/main/vite-react-template)
+- 首页发码/领码入口；生成并确认保存发码 Key，已有 Key 登录、退出、切换空间。
+- 发码 Key 和会话 Token 仅存 SHA-256 摘要；会话通过 HttpOnly Cookie 保存，固定有效 7 天，HTTPS 下带 Secure，同站严格策略。
+- 创建空码池，名称在当前空间内唯一；创建和导入分别提交。支持修改名称，原领码 Key、链接及领取记录保持有效；本地历史保留领取时保存的名称。
+- 每次最多导入 500 条，每条最长 100 个 Unicode 码点；去首尾空白、忽略空行、区分大小写。合法行导入，重复/超长行跳过并返回原始行号及原因。
+- 管理端统计库存、复制分享 Key/链接、停止/恢复发放；明细按创建时间倒序，每页 50 条，可按领取状态筛选。
+- 领码页的 Turnstile Managed 组件和服务端校验；校验失败、超时或缺少配置均拒绝发码。本期不实现 IP 或其他接口限流。
+- 使用单条 SQLite `UPDATE … RETURNING` 原子选码、检查码池状态并记录领取和备注，并发请求不会领到同一个码。
+- 本地领取历史、复制兑换码、幂等的“我已使用”标记，重复请求返回首次标记时间。
+- 浏览器本地写入使用 Web Locks 串行合并，同 Key 的另一兑换码不会覆盖已有记录。存储不可用、损坏或浏览器不支持 Web Locks 时，当前页面保留结果并提示复制保存。
 
-This template provides a minimal setup for building a React application with TypeScript and Vite, designed to run on Cloudflare Workers. It features hot module replacement, ESLint integration, and the flexibility of Workers deployments.
+本地限领可被清除数据、更换浏览器等方式绕过，不承诺一人一码。服务端已发码但响应丢失时不回收、不提供找回。本地使用标记仅在成功提交后更新，不主动同步服务端。“已使用”是用户声明，不代表实际核销。
 
-![React + TypeScript + Vite + Cloudflare Workers](https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/fc7b4b62-442b-4769-641b-ad4422d74300/public)
+## 代码格式
 
-<!-- dash-content-start -->
-
-🚀 Supercharge your web development with this powerful stack:
-
-- [**React**](https://react.dev/) - A modern UI library for building interactive interfaces
-- [**Vite**](https://vite.dev/) - Lightning-fast build tooling and development server
-- [**Hono**](https://hono.dev/) - Ultralight, modern backend framework
-- [**Cloudflare Workers**](https://developers.cloudflare.com/workers/) - Edge computing platform for global deployment
-
-### ✨ Key Features
-
-- 🔥 Hot Module Replacement (HMR) for rapid development
-- 📦 TypeScript support out of the box
-- 🛠️ ESLint configuration included
-- ⚡ Zero-config deployment to Cloudflare's global network
-- 🎯 API routes with Hono's elegant routing
-- 🔄 Full-stack development setup
-- 🔎 Built-in Observability to monitor your Worker
-
-Get started in minutes with local development or deploy directly via the Cloudflare dashboard. Perfect for building modern, performant web applications at the edge.
-
-<!-- dash-content-end -->
-
-## Getting Started
-
-To start a new project with this template, run:
+使用 Prettier 统一格式，ESLint 负责代码质量检查，并通过 `eslint-config-prettier` 关闭冲突规则。格式约定为 2 空格缩进、单引号、保留分号、行宽 100 和 LF 换行。
 
 ```bash
-npm create cloudflare@latest -- --template=cloudflare/templates/vite-react-template
+npm run format        # 格式化项目文件
+npm run format:check  # 只检查格式，不修改文件
 ```
 
-A live deployment of this template is available at:
-[https://react-vite-template.templates.workers.dev](https://react-vite-template.templates.workers.dev)
+VS Code 已配置保存时自动格式化，并推荐 Prettier 和 ESLint 扩展；安装工作区推荐扩展后即可使用。`wrangler.json` 按 JSONC 处理，保留注释。生成的类型、数据库迁移、依赖锁文件、构建产物和本地环境配置通过 `.prettierignore` 排除。
 
-## Development
-
-Install dependencies:
+## 验证
 
 ```bash
-npm install
-```
-
-Start the development server with:
-
-```bash
-npm run dev
-```
-
-Your application will be available at [http://localhost:5173](http://localhost:5173).
-
-## Production
-
-Build your project for production:
-
-```bash
+npm test
+npm run lint
 npm run build
+npm run check
 ```
 
-Preview your build locally:
+`npm test` 使用 Node 内置测试器和 Wrangler 的临时本地 D1，独立于开发库。Siteverify 在接口测试中使用受控响应，覆盖成功、失败、超时、错误 hostname/action 和生产测试密钥禁用。测试包含空间隔离、会话过期/退出、500 条导入边界、并发导入/领取、验证期间停止发放、幂等标记，以及本地记录冲突和存储异常。
 
-```bash
-npm run preview
-```
+`npm run check` 依次执行格式检查、代码检查、测试、构建和 `wrangler deploy --dry-run`，不会发布。
 
-Deploy your project to Cloudflare Workers:
+## 生产配置
 
-```bash
-npm run build && npm run deploy
-```
+当前 `wrangler.json` 的数据库 ID 为本地占位值，尚未部署。上线前需要：
 
-Monitor your workers:
+1. 配置真实 D1 数据库 ID，并应用 `drizzle/` 下的远程迁移。
+2. 在 Cloudflare 创建 Managed 模式的 Turnstile Widget，配置实际站点主机名。
+3. 设置 Worker 普通变量 `TURNSTILE_SITE_KEY` 和 `TURNSTILE_HOSTNAMES`（逗号分隔，不含协议、端口或路径），保持 `ENVIRONMENT=production`。
+4. 用 `wrangler secret put TURNSTILE_SECRET_KEY` 保存 Secret Key。不要将生产 Secret 写入仓库、前端环境变量或日志。
+5. 构建后部署到 HTTPS 站点。
 
-```bash
-npx wrangler tail
-```
+生产环境严格校验 `success`、允许的 `hostname`、`action: claim`，拒绝官方测试密钥。官方测试响应可能返回固定 hostname 且没有 action；仅当请求来自 loopback 地址、`ENVIRONMENT=development`、使用官方测试 Secret 且提交官方 dummy Token 时允许测试元数据，仍须 Siteverify 返回成功。
 
-## Additional Resources
+## 文件位置
 
-- [Cloudflare Workers Documentation](https://developers.cloudflare.com/workers/)
-- [Vite Documentation](https://vitejs.dev/guide/)
-- [React Documentation](https://reactjs.org/)
-- [Hono Documentation](https://hono.dev/)
+- 需求：`doc/兑换码发放管理平台.md`
+- Worker/API：`src/worker/index.ts`
+- 数据表：`src/worker/db/schema.ts`；新增业务迁移：`drizzle/0001_noisy_veda.sql`
+- 前后端共享规则：`src/shared/contracts.ts`
+- React 页面：`src/react-app/components/`
+- 本地记录：`src/react-app/storage.ts`
+
+`counters` 演示表及原迁移保留，原计数器页面和接口已由业务功能替代。
+
+参考：[Turnstile 服务端验证](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)、[官方测试密钥](https://developers.cloudflare.com/turnstile/troubleshooting/testing/)。

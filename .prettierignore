@@ -1,0 +1,17 @@
+# Dependencies and build/runtime output
+node_modules/
+dist/
+.wrangler/
+coverage/
+
+# Generated files: leave these to Wrangler, Drizzle and npm
+worker-configuration.d.ts
+drizzle/
+package-lock.json
+
+# Local environment configuration
+.env*
+.dev.vars*
+
+# Keep Markdown documents in their original formatting
+**/*.md

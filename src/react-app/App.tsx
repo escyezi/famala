@@ -1,118 +1,181 @@
-// src/App.tsx
-
-import { useEffect, useState } from "react";
-import reactLogo from "./assets/react.svg";
-import viteLogo from "/vite.svg";
-import cloudflareLogo from "./assets/Cloudflare_Logo.svg";
-import honoLogo from "./assets/hono.svg";
-import "./App.css";
-
-async function requestCount(path: string, options?: RequestInit): Promise<number> {
-	const response = await fetch(path, { cache: "no-store", ...options });
-	if (!response.ok) throw new Error("Unable to load or save the count. Please try again.");
-	const data = await response.json() as { count: number };
-	return data.count;
-}
+import { useEffect, useState } from 'react';
+import { AuthDialog } from './components/AuthDialog.tsx';
+import { ClaimKeyDialog, ClaimPage, HistoryDialog } from './components/Claims.tsx';
+import { Manager } from './components/Manager.tsx';
+import { Icon } from './components/ui.tsx';
+import './App.css';
 
 function App() {
-	const [count, setCount] = useState<number | null>(null);
-	const [countError, setCountError] = useState("");
-	const [saving, setSaving] = useState(false);
-	const [name, setName] = useState("unknown");
-
-	useEffect(() => {
-		const controller = new AbortController();
-		requestCount("/api/count", { signal: controller.signal })
-			.then(setCount)
-			.catch((error: Error) => {
-				if (!controller.signal.aborted) setCountError(error.message);
-			});
-		return () => controller.abort();
-	}, []);
-
-	async function incrementCount() {
-		if (saving || count === null) return;
-		setSaving(true);
-		setCountError("");
-		try {
-			setCount(await requestCount("/api/count/increment", { method: "POST" }));
-		} catch (error) {
-			setCountError((error as Error).message);
-		} finally {
-			setSaving(false);
-		}
-	}
-
-	async function reloadCount() {
-		if (saving) return;
-		setSaving(true);
-		setCountError("");
-		try {
-			setCount(await requestCount("/api/count"));
-		} catch (error) {
-			setCountError((error as Error).message);
-		} finally {
-			setSaving(false);
-		}
-	}
-
-	return (
-		<>
-			<div>
-				<a href="https://vite.dev" target="_blank">
-					<img src={viteLogo} className="logo" alt="Vite logo" />
-				</a>
-				<a href="https://react.dev" target="_blank">
-					<img src={reactLogo} className="logo react" alt="React logo" />
-				</a>
-				<a href="https://hono.dev/" target="_blank">
-					<img src={honoLogo} className="logo cloudflare" alt="Hono logo" />
-				</a>
-				<a href="https://workers.cloudflare.com/" target="_blank">
-					<img
-						src={cloudflareLogo}
-						className="logo cloudflare"
-						alt="Cloudflare logo"
-					/>
-				</a>
-			</div>
-			<h1>Vite + React + Hono + Cloudflare</h1>
-			<div className="card">
-				<button
-					onClick={incrementCount}
-					aria-label="increment"
-					disabled={count === null || saving}
-					aria-busy={(count === null && !countError) || saving}
-				>
-					{count === null ? (countError ? "Count unavailable" : "Loading count…") : `count is ${count}`}
-				</button>
-				{countError && (
-					<p role="alert">
-						{countError} <button onClick={reloadCount}>Reload count</button>
-					</p>
-				)}
-				<p>
-					Edit <code>src/App.tsx</code> and save to test HMR
-				</p>
-			</div>
-			<div className="card">
-				<button
-					onClick={() => {
-						fetch("/api/")
-							.then((res) => res.json() as Promise<{ name: string }>)
-							.then((data) => setName(data.name));
-					}}
-					aria-label="get name"
-				>
-					Name from API is: {name}
-				</button>
-				<p>
-					Edit <code>worker/index.ts</code> to change the name
-				</p>
-			</div>
-			<p className="read-the-docs">Click on the logos to learn more</p>
-		</>
-	);
+  const [route, setRoute] = useState(() => ({
+    path: location.pathname,
+    search: location.search,
+    version: 0,
+  }));
+  const [modal, setModal] = useState<'auth' | 'claim' | 'history' | null>(null);
+  useEffect(() => {
+    const changed = () =>
+      setRoute((r) => ({
+        path: location.pathname,
+        search: location.search,
+        version: r.version + 1,
+      }));
+    const unauthorized = () => setModal('auth');
+    window.addEventListener('popstate', changed);
+    window.addEventListener('famala:unauthorized', unauthorized);
+    return () => {
+      window.removeEventListener('popstate', changed);
+      window.removeEventListener('famala:unauthorized', unauthorized);
+    };
+  }, []);
+  function go(path: string) {
+    history.pushState(null, '', path);
+    setRoute((r) => ({ path: location.pathname, search: location.search, version: r.version + 1 }));
+    setModal(null);
+    window.scrollTo(0, 0);
+  }
+  const managing = route.path === '/manage';
+  const claiming = route.path === '/claim';
+  const key = new URLSearchParams(route.search).get('key') ?? '';
+  return (
+    <>
+      <header className="app-header">
+        <a
+          href="/"
+          className="brand"
+          onClick={(e) => {
+            e.preventDefault();
+            go('/');
+          }}
+        >
+          <span className="brand-icon">
+            <Icon name="gift" size={22} />
+          </span>
+          <span>
+            famala<span className="brand-dot">.</span>
+          </span>
+        </a>
+        <span className="header-divider" />
+        <span className="product-name">兑换码发放平台</span>
+        <nav>
+          <a
+            href="/manage"
+            className={managing ? 'current' : ''}
+            onClick={(e) => {
+              e.preventDefault();
+              go('/manage');
+            }}
+          >
+            发码管理
+          </a>
+          <button className="history-button" onClick={() => setModal('history')}>
+            <Icon name="history" size={17} />
+            <span>已领取的兑换码</span>
+          </button>
+        </nav>
+      </header>
+      {managing ? (
+        <Manager key={route.version} onLogout={() => go('/')} />
+      ) : claiming ? (
+        <ClaimPage
+          key={`${key}:${route.version}`}
+          claimKey={key}
+          onEnterKey={() => setModal('claim')}
+        />
+      ) : (
+        <main className="home-main">
+          <div className="home-copy">
+            <span className="intro-pill">
+              <i className="dot green" />
+              兑换码发放，简单一点
+            </span>
+            <h1>
+              一个链接，
+              <br />
+              <span>轻松发码。</span>
+            </h1>
+            <p>创建码池、批量导入兑换码，分享链接即可发放。</p>
+            <div className="home-features">
+              <span>
+                <Icon name="check" size={16} />
+                无需注册
+              </span>
+              <span>
+                <Icon name="check" size={16} />
+                独立发码空间
+              </span>
+              <span>
+                <Icon name="check" size={16} />
+                领取记录可查看
+              </span>
+            </div>
+          </div>
+          <div className="entry-cards">
+            <button className="entry-card distribute" onClick={() => setModal('auth')}>
+              <div className="entry-top">
+                <span className="tile-icon large">
+                  <Icon name="box" size={28} />
+                </span>
+                <span className="entry-number">01 / SHARE</span>
+              </div>
+              <h2>我要发码</h2>
+              <p>
+                创建兑换码池、批量导入，
+                <br />
+                一个链接，让分享开始。
+              </p>
+              <span className="entry-link">
+                开启我的发码空间
+                <Icon name="arrow" />
+              </span>
+            </button>
+            <button className="entry-card receive" onClick={() => setModal('claim')}>
+              <div className="entry-top">
+                <span className="tile-icon large">
+                  <Icon name="gift" size={28} />
+                </span>
+                <span className="entry-number">02 / RECEIVE</span>
+              </div>
+              <h2>我要领码</h2>
+              <p>
+                带上你的领码 Key，
+                <br />
+                领取一份属于你的惊喜。
+              </p>
+              <span className="entry-link">
+                输入领码 Key
+                <Icon name="arrow" />
+              </span>
+            </button>
+          </div>
+          <div className="home-bottom">
+            <span>简单发放 · 轻松领取</span>
+            <span>MADE FOR SHARING</span>
+          </div>
+        </main>
+      )}
+      {!managing && (
+        <footer className="app-footer">
+          <span>famala · 分享，让好事发生</span>
+          <span>兑换码使用规则以发码者说明为准</span>
+        </footer>
+      )}
+      {modal === 'auth' && (
+        <AuthDialog
+          onClose={() => {
+            setModal(null);
+            if (managing) go('/');
+          }}
+          onDone={() => go('/manage')}
+        />
+      )}
+      {modal === 'claim' && (
+        <ClaimKeyDialog
+          onClose={() => setModal(null)}
+          onValidated={(claimKey) => go(`/claim?key=${encodeURIComponent(claimKey)}`)}
+        />
+      )}
+      {modal === 'history' && <HistoryDialog onClose={() => setModal(null)} />}
+    </>
+  );
 }
-
 export default App;
