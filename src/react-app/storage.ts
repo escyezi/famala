@@ -57,7 +57,7 @@ export function saveClaim(record: ClaimRecord) {
   return mutate((records) => {
     const existing = records.find((r) => r.claimKey === record.claimKey);
     if (existing && existing.code !== record.code)
-      return '本地已保存该码池的另一个兑换码，本次兑换码未存入领取记录，请复制保存。';
+      return '本地已保存通过此链接领取的另一个兑换码，本次兑换码未存入领取记录，请复制保存。';
     if (!existing) records.push(record);
     return '';
   });

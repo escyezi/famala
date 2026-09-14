@@ -910,6 +910,7 @@ td small {
   font-size: 28px;
   letter-spacing: -0.5px;
   font-weight: 600;
+  overflow-wrap: anywhere;
   margin-bottom: 10px;
 }
 .claim-intro p {
@@ -921,39 +922,35 @@ td small {
   border: 1px solid #dfe7d7;
   border-radius: 14px;
 }
-.claim-pool-title {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-}
-.claim-pool-title h2 {
-  font-size: 17px;
-  margin-top: 4px;
-  overflow-wrap: anywhere;
-}
-.inventory {
-  background: #f8faf4;
-  border: 1px solid #e9eddf;
+.claim-status-banner {
+  background: #f1f7ed;
+  border: 1px solid #dfead7;
   border-radius: 9px;
-  padding: 18px 20px;
-  margin: 22px 0;
+  padding: 16px 20px;
+  margin-bottom: 22px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  color: #849473;
-  font-size: 12px;
-}
-.inventory strong {
-  color: #577749;
-  font-size: 29px;
+  gap: 10px;
+  color: #4b7955;
+  font-size: 13px;
   font-weight: 500;
 }
-.inventory small {
-  display: inline;
-  font-size: 11px;
-  margin-left: 6px;
-  color: #a0ad93;
+.claim-status-banner.stopped {
+  background: #fbf7ee;
+  border-color: #eee4ce;
+  color: #927341;
+}
+.claim-status-banner.empty {
+  background: #f3f5f2;
+  border-color: #e3e8df;
+  color: #788471;
+}
+.claim-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
 }
 .claim-panel label {
   font-size: 12px;

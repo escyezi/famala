@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { after, before, test } from 'node:test';
+import { afterAll, beforeAll, beforeEach, test, vi } from 'vitest';
 import { readdir, readFile } from 'node:fs/promises';
 import { getPlatformProxy } from 'wrangler';
 import app from '../src/worker/index.ts';
@@ -8,10 +8,11 @@ import { digest, SESSION_MS } from '../src/worker/auth.ts';
 let proxy;
 let env;
 const realFetch = globalThis.fetch;
-let verification = async () =>
+const successfulVerification = async () =>
   Response.json({ success: true, hostname: 'famala.example', action: 'claim' });
+let verification = successfulVerification;
 let verificationCalls = 0;
-before(async () => {
+beforeAll(async () => {
   proxy = await getPlatformProxy({ persist: false });
   env = {
     ...proxy.env,
@@ -28,16 +29,20 @@ before(async () => {
       .filter(Boolean);
     await env.DB.batch(statements.map((s) => env.DB.prepare(s)));
   }
-  globalThis.fetch = async (input, init) => {
+});
+beforeEach(() => {
+  verification = successfulVerification;
+  verificationCalls = 0;
+  vi.stubGlobal('fetch', async (input, init) => {
     if (String(input) === 'https://challenges.cloudflare.com/turnstile/v0/siteverify') {
       verificationCalls++;
       return verification(input, init);
     }
     return realFetch(input, init);
-  };
+  });
 });
-after(async () => {
-  globalThis.fetch = realFetch;
+afterAll(async () => {
+  vi.unstubAllGlobals();
   await proxy?.dispose();
 });
 async function request(path, data, cookie, bindings = env, headers = {}) {

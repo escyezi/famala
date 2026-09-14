@@ -12,6 +12,23 @@ function App() {
     version: 0,
   }));
   const [modal, setModal] = useState<'auth' | 'claim' | 'history' | null>(null);
+  const [authenticated, setAuthenticated] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    // Checking a public page's session must not open the login dialog on 401.
+    fetch('/api/manage/session', {
+      credentials: 'same-origin',
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!controller.signal.aborted) setAuthenticated(response.ok);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setAuthenticated(false);
+      });
+    return () => controller.abort();
+  }, [route.version]);
   useEffect(() => {
     const changed = () =>
       setRoute((r) => ({
@@ -19,7 +36,10 @@ function App() {
         search: location.search,
         version: r.version + 1,
       }));
-    const unauthorized = () => setModal('auth');
+    const unauthorized = () => {
+      setAuthenticated(false);
+      setModal('auth');
+    };
     window.addEventListener('popstate', changed);
     window.addEventListener('famala:unauthorized', unauthorized);
     return () => {
@@ -57,16 +77,18 @@ function App() {
         <span className="header-divider" />
         <span className="product-name">兑换码发放平台</span>
         <nav>
-          <a
-            href="/manage"
-            className={managing ? 'current' : ''}
-            onClick={(e) => {
-              e.preventDefault();
-              go('/manage');
-            }}
-          >
-            发码管理
-          </a>
+          {authenticated && (
+            <a
+              href="/manage"
+              className={managing ? 'current' : ''}
+              onClick={(e) => {
+                e.preventDefault();
+                go('/manage');
+              }}
+            >
+              发码管理
+            </a>
+          )}
           <button className="history-button" onClick={() => setModal('history')}>
             <Icon name="history" size={17} />
             <span>已领取的兑换码</span>
@@ -74,7 +96,13 @@ function App() {
         </nav>
       </header>
       {managing ? (
-        <Manager key={route.version} onLogout={() => go('/')} />
+        <Manager
+          key={route.version}
+          onLogout={() => {
+            setAuthenticated(false);
+            go('/');
+          }}
+        />
       ) : claiming ? (
         <ClaimPage
           key={`${key}:${route.version}`}
@@ -155,7 +183,7 @@ function App() {
       )}
       {!managing && (
         <footer className="app-footer">
-          <span>famala · 分享，让好事发生</span>
+          <span>famala · 让发码简单一点</span>
           <span>兑换码使用规则以发码者说明为准</span>
         </footer>
       )}
@@ -165,7 +193,10 @@ function App() {
             setModal(null);
             if (managing) go('/');
           }}
-          onDone={() => go('/manage')}
+          onDone={() => {
+            setAuthenticated(true);
+            go('/manage');
+          }}
         />
       )}
       {modal === 'claim' && (

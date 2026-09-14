@@ -289,8 +289,7 @@ app.post('/api/claim', async (c) => {
   const data = await body(c);
   const key = claimKey(data.claimKey);
   const pool = await publicPool(c, key);
-  if (pool.status === 'stopped')
-    return c.json({ error: '该兑换码池已停止发放', code: 'POOL_STOPPED' }, 409);
+  if (pool.status === 'stopped') return c.json({ error: '已停止发放', code: 'POOL_STOPPED' }, 409);
   let remark;
   try {
     remark = normalizeRemark(data.remark);
@@ -323,7 +322,7 @@ app.post('/api/claim', async (c) => {
     const current = await publicPool(c, key);
     return c.json(
       {
-        error: current.status === 'stopped' ? '该兑换码池已停止发放' : '兑换码已领完',
+        error: current.status === 'stopped' ? '已停止发放' : '兑换码已领完',
         code: current.status === 'stopped' ? 'POOL_STOPPED' : 'POOL_EMPTY',
       },
       409,

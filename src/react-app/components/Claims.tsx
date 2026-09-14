@@ -181,6 +181,12 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
   }, [claimKey, revision]);
   const record = result ?? snapshot.records.find((r) => r.claimKey === claimKey);
   const available = pool?.status === 'active' && pool.remaining > 0;
+  const distributionState = pool?.status === 'stopped' ? 'stopped' : available ? 'active' : 'empty';
+  const distributionLabel = {
+    stopped: '停止发放',
+    active: '兑换码发放中',
+    empty: '兑换码已发放完毕',
+  }[distributionState];
   const length = codePointLength(remark.trim());
   async function claim(e: React.FormEvent) {
     e.preventDefault();
@@ -229,16 +235,16 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
           <Icon name={record ? 'check' : 'gift'} size={34} />
         </span>
         <div className="eyebrow">A LITTLE SOMETHING FOR YOU</div>
-        <h1>{record && pool ? '兑换码已为你保留' : '领取一份小美好'}</h1>
+        <h1>{pool?.name ?? '领取兑换码'}</h1>
         {record && pool && <p className="muted">复制兑换码，前往对应平台使用。</p>}
       </div>
       <Notice>{error}</Notice>
       <Notice kind="info">{warning || snapshot.warning}</Notice>
       {!loaded ? (
-        <div className="empty-state">正在查找兑换码池…</div>
+        <div className="empty-state">正在加载领取信息…</div>
       ) : !pool ? (
         <div className="claim-panel">
-          <p>暂时无法打开这个码池。</p>
+          <p>暂时无法加载领取信息。</p>
           <div className="actions">
             <button className="button secondary" onClick={() => setRevision((v) => v + 1)}>
               重试
@@ -256,21 +262,9 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
         />
       ) : (
         <section className="claim-panel">
-          <div className="claim-pool-title">
-            <div>
-              <span className="field-help">当前兑换码池</span>
-              <h2>{pool.name}</h2>
-            </div>
-            <span className={`status ${pool.status}`}>
-              {pool.status === 'stopped' ? '已停止' : pool.remaining ? '发放中' : '已领完'}
-            </span>
-          </div>
-          <div className="inventory">
-            <span>剩余兑换码</span>
-            <strong>
-              {pool.remaining}
-              <small>份</small>
-            </strong>
+          <div className={`claim-status-banner ${distributionState}`} role="status">
+            <span className="claim-status-dot" aria-hidden="true" />
+            <span>{distributionLabel}</span>
           </div>
           <form onSubmit={claim}>
             <label htmlFor="remark">
@@ -279,12 +273,11 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
             <textarea
               id="remark"
               rows={3}
-              placeholder="可以留下你的昵称或想对发码者说的话"
+              placeholder="对开发者说点什么"
               value={remark}
               onChange={(e) => setRemark(e.target.value)}
               disabled={busy}
             />
-            <p className="field-help">备注将提供给发码者查看；不填写也可正常领取。</p>
             {length > 500 && <Notice>备注最多 500 字，请修改后领取。</Notice>}
             {available && config?.turnstileSiteKey && (
               <Turnstile key={attempt} siteKey={config.turnstileSiteKey} onToken={setToken} />
@@ -296,19 +289,13 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
               className="button primary full claim-button"
               disabled={!available || !token || busy || length > 500}
             >
-              {pool.status === 'stopped'
-                ? '该兑换码池已停止发放'
-                : !pool.remaining
-                  ? '兑换码已领完'
-                  : busy
-                    ? '正在领取，请稍候…'
-                    : '领取兑换码'}
+              领取兑换码
               {available && !busy && <Icon name="arrow" size={18} />}
             </button>
           </form>
           {!available && (
             <button className="text-button full" onClick={() => setRevision((v) => v + 1)}>
-              刷新码池状态
+              刷新领取状态
             </button>
           )}
         </section>

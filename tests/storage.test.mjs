@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { beforeEach, test } from 'node:test';
+import { beforeEach, test, vi } from 'vitest';
 import { readRecords, saveClaim, saveUsed, STORAGE_KEY } from '../src/react-app/storage.ts';
 const memory = new Map();
 let queue = Promise.resolve();
@@ -10,15 +10,6 @@ const locks = {
     return result;
   },
 };
-Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { locks } });
-Object.defineProperty(globalThis, 'localStorage', {
-  configurable: true,
-  value: {
-    getItem: (key) => memory.get(key) ?? null,
-    setItem: (key, value) => memory.set(key, value),
-  },
-});
-Object.defineProperty(globalThis, 'window', { configurable: true, value: new EventTarget() });
 const record = (letter, code = letter) => ({
   claimKey: `c_${letter.repeat(43)}`,
   poolName: '测试池',
@@ -29,7 +20,13 @@ const record = (letter, code = letter) => ({
 });
 beforeEach(() => {
   memory.clear();
-  navigator.locks = locks;
+  queue = Promise.resolve();
+  vi.stubGlobal('navigator', { locks });
+  vi.stubGlobal('localStorage', {
+    getItem: (key) => memory.get(key) ?? null,
+    setItem: (key, value) => memory.set(key, value),
+  });
+  vi.stubGlobal('window', new EventTarget());
 });
 test('simultaneous saves merge different pools without overwriting, and keep the first code for a key', async () => {
   const [first, other, conflict] = await Promise.all([
@@ -58,12 +55,11 @@ test('corrupt or inaccessible storage is reported and never silently overwritten
   assert.ok(await saveClaim(record('A')));
   assert.equal(memory.get(STORAGE_KEY), '{broken');
   memory.clear();
-  const original = localStorage.setItem;
-  localStorage.setItem = () => {
+  const setItem = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
     throw new Error('QuotaExceededError');
-  };
+  });
   assert.match(await saveClaim(record('A')), /本地保存失败/);
-  localStorage.setItem = original;
+  setItem.mockRestore();
   navigator.locks = undefined;
   assert.match(await saveClaim(record('A')), /复制保存/);
 });

@@ -46,6 +46,7 @@ export function Turnstile({
   const container = useRef<HTMLDivElement>(null);
   const callback = useRef(onToken);
   const [error, setError] = useState('');
+  const [verified, setVerified] = useState(false);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     callback.current = onToken;
@@ -53,9 +54,23 @@ export function Turnstile({
   useEffect(() => {
     let cancelled = false;
     let widget: string | undefined;
+    const timeout = setTimeout(() => {
+      if (!cancelled) setError('人机验证等待时间较长，请重试');
+    }, 20000);
+    function fail(message: string) {
+      if (cancelled) return;
+      clearTimeout(timeout);
+      callback.current('');
+      setVerified(false);
+      setError(message);
+    }
     loadScript()
       .then(() => {
-        if (cancelled || !container.current || !window.turnstile) return;
+        if (cancelled || !container.current) return;
+        if (!window.turnstile) {
+          loading = undefined;
+          throw new Error('验证组件未就绪，请重试');
+        }
         widget = window.turnstile.render(container.current, {
           sitekey: siteKey,
           action: 'claim',
@@ -65,42 +80,45 @@ export function Turnstile({
           'response-field': false,
           callback: (token: string) => {
             if (!cancelled) {
+              clearTimeout(timeout);
               setError('');
+              setVerified(true);
               callback.current(token);
             }
           },
           'expired-callback': () => {
-            if (!cancelled) {
-              callback.current('');
-              setError('验证已过期，请重新验证');
-            }
+            fail('验证已过期，请重新验证');
           },
-          'error-callback': () => {
+          'error-callback': (code: string) => {
             if (!cancelled) {
-              callback.current('');
-              setError('人机验证失败，请重新验证');
+              console.warn('Turnstile verification failed:', code);
+              fail('人机验证失败，请重新验证');
             }
             return true;
           },
           'timeout-callback': () => {
-            if (!cancelled) {
-              callback.current('');
-              setError('验证超时，请重新验证');
-            }
+            fail('验证超时，请重新验证');
           },
+          'unsupported-callback': () => fail('当前浏览器不支持人机验证，请使用其他浏览器打开'),
         });
       })
       .catch((e: Error) => {
-        if (!cancelled) setError(e.message);
+        fail(e.message);
       });
     return () => {
       cancelled = true;
+      clearTimeout(timeout);
       if (widget) window.turnstile?.remove(widget);
     };
   }, [siteKey, attempt]);
   return (
     <div className="turnstile">
       <div ref={container} />
+      {!verified && !error && (
+        <p className="field-help" role="status">
+          正在进行人机验证，通过后即可领取…
+        </p>
+      )}
       {error && (
         <>
           <Notice>{error}</Notice>
@@ -109,6 +127,7 @@ export function Turnstile({
             className="text-button"
             onClick={() => {
               callback.current('');
+              setVerified(false);
               setError('');
               setAttempt((v) => v + 1);
             }}

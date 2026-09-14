@@ -50,7 +50,7 @@ npm run build
 npm run check
 ```
 
-`npm test` 使用 Node 内置测试器和 Wrangler 的临时本地 D1，独立于开发库。Siteverify 在接口测试中使用受控响应，覆盖成功、失败、超时、错误 hostname/action 和生产测试密钥禁用。测试包含空间隔离、会话过期/退出、500 条导入边界、并发导入/领取、验证期间停止发放、幂等标记，以及本地记录冲突和存储异常。
+`npm test` 使用 Vitest 一次性运行测试，`npm run test:watch` 监听修改并重跑测试。测试使用独立的 `vitest.config.ts`，在 Node 环境执行，通过 Wrangler 访问临时本地 D1，独立于开发库。文件内的测试按顺序执行，单个用例内仍会并发请求以验证导入和领取竞争。Siteverify 在接口测试中使用受控响应，覆盖成功、失败、超时、错误 hostname/action 和生产测试密钥禁用。测试包含空间隔离、会话过期/退出、500 条导入边界、并发导入/领取、验证期间停止发放、幂等标记，以及本地记录冲突和存储异常。
 
 `npm run check` 依次执行格式检查、代码检查、测试、构建和 `wrangler deploy --dry-run`，不会发布。
 
