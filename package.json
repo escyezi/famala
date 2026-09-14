@@ -12,6 +12,7 @@
     "publish": true
   },
   "dependencies": {
+    "drizzle-orm": "0.45.2",
     "hono": "4.11.1",
     "react": "19.2.1",
     "react-dom": "19.2.1"
@@ -23,6 +24,7 @@
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "5.1.1",
+    "drizzle-kit": "0.31.10",
     "eslint": "9.39.2",
     "eslint-plugin-react-hooks": "7.0.1",
     "eslint-plugin-react-refresh": "0.4.24",
@@ -40,7 +42,10 @@
     "deploy": "wrangler deploy",
     "dev": "vite",
     "lint": "eslint .",
-    "preview": "npm run build && vite preview"
+    "preview": "npm run build && vite preview",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "wrangler d1 migrations apply famala-db --local",
+    "predev": "npm run db:migrate"
   },
   "type": "module"
 }

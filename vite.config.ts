@@ -3,5 +3,6 @@ import react from "@vitejs/plugin-react";
 import { cloudflare } from "@cloudflare/vite-plugin";
 
 export default defineConfig({
-	plugins: [react(), cloudflare()],
+	plugins: [react(), cloudflare({ remoteBindings: false })],
+	server: { host: "127.0.0.1" },
 });

@@ -14,9 +14,20 @@
 		"enabled": true
 	},
 	"upload_source_maps": true,
+	"send_metrics": false,
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "famala-db",
+			"database_id": "00000000-0000-0000-0000-000000000001",
+			"migrations_dir": "drizzle",
+			"remote": false
+		}
+	],
 	"assets": {
 		"directory": "./dist/client",
-		"not_found_handling": "single-page-application"
+		"not_found_handling": "single-page-application",
+		"run_worker_first": ["/api/*"]
 	}
 	/**
 	 * Smart Placement

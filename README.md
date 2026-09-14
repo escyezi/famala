@@ -1,5 +1,23 @@
 # React + Vite + Hono + Cloudflare Workers
 
+## Famala 本地计数器
+
+计数使用 Drizzle ORM 保存到本地 D1。页面打开时调用 `GET /api/count` 加载最新值，点击 count 按钮调用 `POST /api/count/increment`，使用 API 返回的值更新组件。所有页面共享一个计数，初始为 0；加一使用单条 SQL 原子执行。
+
+```bash
+npm install
+npm run dev
+```
+
+`predev` 会自动执行本地迁移。数据保存在 `.wrangler/state/`，刷新页面或重启服务不会清零。当前数据库 ID 是本地占位值，已禁用远程绑定和 Wrangler 遥测，无需 Cloudflare 账号或 Token。
+
+- 表结构：`src/worker/db/schema.ts`
+- 修改表结构后：`npm run db:generate`，再运行 `npm run db:migrate`（仅本地）
+- 修改绑定后：`npm run cf-typegen`
+- 请求失败时页面显示错误，可使用 Reload count 重新读取当前值；不会自动重试加一请求。
+
+以下保留官方模板说明。云端部署需要另行创建并配置真实 D1 数据库。
+
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/templates/tree/main/vite-react-template)
 
 This template provides a minimal setup for building a React application with TypeScript and Vite, designed to run on Cloudflare Workers. It features hot module replacement, ESLint integration, and the flexibility of Workers deployments.

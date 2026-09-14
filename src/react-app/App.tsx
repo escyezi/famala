@@ -1,15 +1,60 @@
 // src/App.tsx
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import reactLogo from "./assets/react.svg";
 import viteLogo from "/vite.svg";
 import cloudflareLogo from "./assets/Cloudflare_Logo.svg";
 import honoLogo from "./assets/hono.svg";
 import "./App.css";
 
+async function requestCount(path: string, options?: RequestInit): Promise<number> {
+	const response = await fetch(path, { cache: "no-store", ...options });
+	if (!response.ok) throw new Error("Unable to load or save the count. Please try again.");
+	const data = await response.json() as { count: number };
+	return data.count;
+}
+
 function App() {
-	const [count, setCount] = useState(0);
+	const [count, setCount] = useState<number | null>(null);
+	const [countError, setCountError] = useState("");
+	const [saving, setSaving] = useState(false);
 	const [name, setName] = useState("unknown");
+
+	useEffect(() => {
+		const controller = new AbortController();
+		requestCount("/api/count", { signal: controller.signal })
+			.then(setCount)
+			.catch((error: Error) => {
+				if (!controller.signal.aborted) setCountError(error.message);
+			});
+		return () => controller.abort();
+	}, []);
+
+	async function incrementCount() {
+		if (saving || count === null) return;
+		setSaving(true);
+		setCountError("");
+		try {
+			setCount(await requestCount("/api/count/increment", { method: "POST" }));
+		} catch (error) {
+			setCountError((error as Error).message);
+		} finally {
+			setSaving(false);
+		}
+	}
+
+	async function reloadCount() {
+		if (saving) return;
+		setSaving(true);
+		setCountError("");
+		try {
+			setCount(await requestCount("/api/count"));
+		} catch (error) {
+			setCountError((error as Error).message);
+		} finally {
+			setSaving(false);
+		}
+	}
 
 	return (
 		<>
@@ -34,11 +79,18 @@ function App() {
 			<h1>Vite + React + Hono + Cloudflare</h1>
 			<div className="card">
 				<button
-					onClick={() => setCount((count) => count + 1)}
+					onClick={incrementCount}
 					aria-label="increment"
+					disabled={count === null || saving}
+					aria-busy={(count === null && !countError) || saving}
 				>
-					count is {count}
+					{count === null ? (countError ? "Count unavailable" : "Loading count…") : `count is ${count}`}
 				</button>
+				{countError && (
+					<p role="alert">
+						{countError} <button onClick={reloadCount}>Reload count</button>
+					</p>
+				)}
 				<p>
 					Edit <code>src/App.tsx</code> and save to test HMR
 				</p>
