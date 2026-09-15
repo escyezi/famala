@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api, dateTime } from '../api.ts';
 import { parseImport } from '../../shared/contracts.ts';
 import type { CodeRow, ImportResult, Pool, Session } from '../../shared/contracts.ts';
 import { CopyButton, Dialog, Icon, Notice } from './ui.tsx';
+import { WorkspaceMenu } from './WorkspaceMenu.tsx';
 
 function ImportDialog({
   pool,
@@ -175,12 +177,20 @@ function PoolNameDialog({
   );
 }
 
-export function Manager({ onLogout }: { onLogout: () => void }) {
+export function Manager({
+  onLogout,
+  menuTarget,
+  poolId,
+  onNavigate,
+}: {
+  onLogout: () => void;
+  menuTarget: HTMLElement | null;
+  poolId?: string;
+  onNavigate: (path: string) => void;
+}) {
   const [session, setSession] = useState<Session | null>(null);
   const [pools, setPools] = useState<Pool[] | null>(null);
-  const [selected, setSelected] = useState('');
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -190,6 +200,8 @@ export function Manager({ onLogout }: { onLogout: () => void }) {
   const [filter, setFilter] = useState('all');
   const [codes, setCodes] = useState<{ items: CodeRow[]; total: number } | null>(null);
   const [codesError, setCodesError] = useState('');
+  const pool = pools?.find((p) => p.id === poolId);
+  const loadedPoolId = pool?.id;
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
@@ -197,9 +209,9 @@ export function Manager({ onLogout }: { onLogout: () => void }) {
       api<{ items: Pool[] }>('/api/manage/pools', undefined, controller.signal),
     ])
       .then(([s, result]) => {
+        if (controller.signal.aborted) return;
         setSession(s);
         setPools(result.items);
-        setSelected((current) => current || result.items[0]?.id || '');
         setError('');
       })
       .catch((e: Error) => {
@@ -208,14 +220,15 @@ export function Manager({ onLogout }: { onLogout: () => void }) {
     return () => controller.abort();
   }, [revision]);
   useEffect(() => {
-    if (!selected) return;
+    if (!loadedPoolId) return;
     const controller = new AbortController();
     api<{ items: CodeRow[]; total: number }>(
-      `/api/manage/pools/${selected}/codes?page=${page}&status=${filter}`,
+      `/api/manage/pools/${loadedPoolId}/codes?page=${page}&status=${filter}`,
       undefined,
       controller.signal,
     )
       .then((result) => {
+        if (controller.signal.aborted) return;
         setCodes(result);
         setCodesError('');
       })
@@ -223,19 +236,13 @@ export function Manager({ onLogout }: { onLogout: () => void }) {
         if (!controller.signal.aborted) setCodesError(e.message);
       });
     return () => controller.abort();
-  }, [selected, page, filter, revision]);
+  }, [loadedPoolId, page, filter, revision]);
   function refresh() {
+    setCodes(null);
+    setCodesError('');
+    setError('');
     setRevision((r) => r + 1);
   }
-  const pool = pools?.find((p) => p.id === selected);
-  const totals = (pools ?? []).reduce(
-    (t, p) => ({
-      total: t.total + p.total,
-      claimed: t.claimed + p.claimed,
-      remaining: t.remaining + p.remaining,
-    }),
-    { total: 0, claimed: 0, remaining: 0 },
-  );
   async function status() {
     if (!pool || busy) return;
     setBusy(true);
@@ -244,11 +251,6 @@ export function Manager({ onLogout }: { onLogout: () => void }) {
       await api(`/api/manage/pools/${pool.id}/status`, {
         status: pool.status === 'active' ? 'stopped' : 'active',
       });
-      setNotice(
-        pool.status === 'active'
-          ? '已停止发放，已有领取记录仍可查看和标记使用。'
-          : '已恢复发放，原领码链接可继续使用。',
-      );
       refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -270,152 +272,139 @@ export function Manager({ onLogout }: { onLogout: () => void }) {
   }
   return (
     <div className="workspace">
-      <aside className="sidebar">
-        <div>
-          <div className="sidebar-label">工作空间</div>
-          <div className="space-card">
-            <span className="space-avatar">F</span>
-            <div>
-              <strong>我的发码空间</strong>
-              <small>{session ? session.spaceId.slice(0, 8).toUpperCase() : '正在连接…'}</small>
-            </div>
-            <span className="online-dot" />
-          </div>
-          <div className="sidebar-label">管理</div>
-          <div className="nav-item active">
-            <Icon name="grid" />
-            兑换码池<span>{pools?.length ?? '—'}</span>
-          </div>
-        </div>
-        <div className="sidebar-bottom">
-          <div className="sidebar-note">
-            <Icon name="key" />
-            <p>
-              记得保管好发码 Key<small>登录态有效期为 7 天</small>
-            </p>
-          </div>
-          <button className="nav-item" onClick={logout} disabled={busy}>
-            <Icon name="logout" />
-            退出登录
-          </button>
-        </div>
-      </aside>
+      {menuTarget &&
+        createPortal(<WorkspaceMenu session={session} busy={busy} onLogout={logout} />, menuTarget)}
       <main className="manager-main">
+        {poolId && (
+          <a
+            className="text-button pool-back"
+            href="/manage"
+            onClick={(e) => {
+              if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+              e.preventDefault();
+              onNavigate('/manage');
+            }}
+          >
+            <Icon name="arrow" size={16} />
+            返回码池列表
+          </a>
+        )}
         <div className="page-heading">
           <div>
             <div className="eyebrow">DISTRIBUTOR WORKSPACE</div>
-            <h1>兑换码池</h1>
-            <p className="muted">创建、分享，轻松管理每一次发放。</p>
+            <h1>{poolId ? (pool?.name ?? '码池详情') : '兑换码池'}</h1>
+            <p className="muted">
+              {poolId
+                ? pool
+                  ? `创建于 ${dateTime(pool.createdAt)}`
+                  : '查看码池信息、领取明细与分享设置。'
+                : '创建、分享，轻松管理每一次发放。'}
+            </p>
           </div>
           <div className="heading-actions">
-            <button
-              className="button primary"
-              onClick={() => setCreating(true)}
-              disabled={!session}
-            >
-              <Icon name="plus" size={18} />
-              新建兑换码池
-            </button>
-            <button className="text-button mobile-logout" onClick={logout} disabled={busy}>
-              退出登录
-            </button>
+            {poolId ? (
+              <button className="text-button" onClick={refresh}>
+                刷新数据
+              </button>
+            ) : (
+              <button
+                className="button primary"
+                onClick={() => setCreating(true)}
+                disabled={!session}
+              >
+                <Icon name="plus" size={18} />
+                新建兑换码池
+              </button>
+            )}
           </div>
         </div>
         <Notice>{error}</Notice>
-        <Notice kind="success">{notice}</Notice>
-        <div className="stats">
-          <div className="stat">
-            <span>兑换码总数</span>
-            <strong>{pools ? totals.total.toLocaleString() : '—'}</strong>
-            <small>所有码池累计导入</small>
-          </div>
-          <div className="stat">
-            <span>
-              <i className="dot green" />
-              已领取
-            </span>
-            <strong>{pools ? totals.claimed.toLocaleString() : '—'}</strong>
-            <small>已成功发出的兑换码</small>
-          </div>
-          <div className="stat">
-            <span>
-              <i className="dot orange" />
-              剩余库存
-            </span>
-            <strong>{pools ? totals.remaining.toLocaleString() : '—'}</strong>
-            <small>等待领取的兑换码</small>
-          </div>
-        </div>
-        <div className="section-heading">
-          <h2>
-            我的码池 <span className="count-badge">{pools?.length ?? 0}</span>
-          </h2>
-          <button className="text-button" onClick={refresh}>
-            刷新数据
-          </button>
-        </div>
-        {!pools ? (
-          <div className="empty-state">
-            {error ? '数据加载失败，请点击刷新数据重试。' : '正在加载你的码池…'}
-          </div>
-        ) : pools.length === 0 ? (
-          <div className="empty-state bordered">
-            <span className="empty-icon">
-              <Icon name="box" size={32} />
-            </span>
-            <h3>从第一个码池开始</h3>
-            <p>为你的活动创建一个码池，再导入兑换码。</p>
-            <button className="button secondary" onClick={() => setCreating(true)}>
-              <Icon name="plus" size={16} />
-              新建兑换码池
-            </button>
-          </div>
-        ) : (
-          <div className="pool-grid">
-            {pools.map((p) => (
-              <button
-                className={`pool-card ${p.id === selected ? 'selected' : ''}`}
-                key={p.id}
-                onClick={() => {
-                  if (p.id === selected) return;
-                  setSelected(p.id);
-                  setPage(1);
-                  setCodes(null);
-                  setCodesError('');
-                  setNotice('');
-                }}
-              >
-                <div className="pool-card-top">
-                  <span className="tile-icon">
-                    <Icon name="gift" />
-                  </span>
-                  <span className={`status ${p.status}`}>
-                    {p.status === 'stopped' ? '已停止' : p.remaining ? '发放中' : '已领完'}
-                  </span>
-                </div>
-                <h3>{p.name}</h3>
-                <p>创建于 {dateTime(p.createdAt)}</p>
-                <div className="pool-progress">
-                  <span style={{ width: `${p.total ? (p.claimed / p.total) * 100 : 0}%` }} />
-                </div>
-                <div className="pool-counts">
-                  <span>
-                    已领取 <b>{p.claimed}</b> / {p.total}
-                  </span>
-                  <span>
-                    剩余 <b>{p.remaining}</b>
-                  </span>
-                </div>
+        {!poolId && (
+          <>
+            <div className="section-heading">
+              <h2>
+                我的码池 <span className="count-badge">{pools?.length ?? 0}</span>
+              </h2>
+              <button className="text-button" onClick={refresh}>
+                刷新数据
               </button>
-            ))}
+            </div>
+            {!pools ? (
+              <div className="empty-state">
+                {error ? '数据加载失败，请点击刷新数据重试。' : '正在加载你的码池…'}
+              </div>
+            ) : pools.length === 0 ? (
+              <div className="empty-state bordered">
+                <span className="empty-icon">
+                  <Icon name="box" size={32} />
+                </span>
+                <h3>从第一个码池开始</h3>
+                <p>为你的活动创建一个码池，再导入兑换码。</p>
+                <button className="button secondary" onClick={() => setCreating(true)}>
+                  <Icon name="plus" size={16} />
+                  新建兑换码池
+                </button>
+              </div>
+            ) : (
+              <div className="pool-grid">
+                {pools.map((p) => (
+                  <a
+                    className="pool-card"
+                    key={p.id}
+                    href={`/manage/pools/${p.id}`}
+                    onClick={(e) => {
+                      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+                        return;
+                      e.preventDefault();
+                      onNavigate(`/manage/pools/${p.id}`);
+                    }}
+                  >
+                    <div className="pool-card-top">
+                      <h3 title={p.name}>{p.name}</h3>
+                      {p.total > 0 && (
+                        <span
+                          className={`status ${p.status === 'stopped' ? 'stopped' : p.remaining > 0 ? 'active' : 'exhausted'}`}
+                        >
+                          {p.status === 'stopped'
+                            ? '已停止'
+                            : p.remaining > 0
+                              ? '发放中'
+                              : '已领完'}
+                        </span>
+                      )}
+                    </div>
+                    <p>创建于 {dateTime(p.createdAt)}</p>
+                    <div className="pool-progress">
+                      <span style={{ width: `${p.total ? (p.claimed / p.total) * 100 : 0}%` }} />
+                    </div>
+                    <div className="pool-counts">
+                      <span>
+                        已领取 <b>{p.claimed}</b> / {p.total}
+                      </span>
+                      <span>
+                        剩余 <b>{p.remaining}</b>
+                      </span>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        {poolId && !pool && (
+          <div className="empty-state bordered">
+            {!pools
+              ? error
+                ? '数据加载失败，请点击刷新数据重试。'
+                : '正在加载码池详情…'
+              : '码池不存在或无权访问。'}
           </div>
         )}
         {pool && (
           <section className="pool-detail">
             <div className="section-heading">
               <div>
-                <h2>{pool.name}</h2>
-                <p className="muted small-text">领取明细与分享设置</p>
+                <h2>领取明细与分享设置</h2>
               </div>
               <div className="actions">
                 <button
@@ -435,7 +424,27 @@ export function Manager({ onLogout }: { onLogout: () => void }) {
               </div>
             </div>
             <div className="share-panel">
-              <div>
+              <div className="share-stat">
+                <span className="field-help">发放状态</span>
+                <span
+                  className={`status ${pool.status === 'stopped' ? 'stopped' : pool.total === 0 ? '' : pool.remaining > 0 ? 'active' : 'exhausted'}`}
+                >
+                  {pool.status === 'stopped'
+                    ? '已停止'
+                    : pool.total === 0
+                      ? '待导入'
+                      : pool.remaining > 0
+                        ? '发放中'
+                        : '已领完'}
+                </span>
+              </div>
+              <div className="share-stat">
+                <span className="field-help">已领取 / 总数</span>
+                <strong>
+                  {pool.claimed} / {pool.total}
+                </strong>
+              </div>
+              <div className="share-key">
                 <span className="field-help">领码 Key</span>
                 <code>{pool.claimKey}</code>
               </div>
@@ -465,6 +474,7 @@ export function Manager({ onLogout }: { onLogout: () => void }) {
                       setFilter(value);
                       setPage(1);
                       setCodes(null);
+                      setCodesError('');
                     }}
                   >
                     {label}
@@ -531,6 +541,7 @@ export function Manager({ onLogout }: { onLogout: () => void }) {
                   onClick={() => {
                     setPage((p) => p - 1);
                     setCodes(null);
+                    setCodesError('');
                   }}
                 >
                   上一页
@@ -544,6 +555,7 @@ export function Manager({ onLogout }: { onLogout: () => void }) {
                   onClick={() => {
                     setPage((p) => p + 1);
                     setCodes(null);
+                    setCodesError('');
                   }}
                 >
                   下一页
@@ -558,10 +570,7 @@ export function Manager({ onLogout }: { onLogout: () => void }) {
           onClose={() => setCreating(false)}
           onSaved={(id) => {
             setCreating(false);
-            setSelected(id);
-            setCodes(null);
-            setPage(1);
-            refresh();
+            onNavigate(`/manage/pools/${id}`);
           }}
         />
       )}
@@ -574,7 +583,6 @@ export function Manager({ onLogout }: { onLogout: () => void }) {
             setPools(
               (items) => items?.map((item) => (item.id === id ? { ...item, name } : item)) ?? null,
             );
-            setNotice('码池名称已更新。');
             refresh();
           }}
         />

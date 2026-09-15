@@ -13,6 +13,7 @@ function App() {
   }));
   const [modal, setModal] = useState<'auth' | 'claim' | 'history' | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
+  const [workspaceMenuTarget, setWorkspaceMenuTarget] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     // Checking a public page's session must not open the login dialog on 401.
@@ -30,12 +31,15 @@ function App() {
     return () => controller.abort();
   }, [route.version]);
   useEffect(() => {
-    const changed = () =>
+    const changed = () => {
+      setModal(null);
+      window.scrollTo(0, 0);
       setRoute((r) => ({
         path: location.pathname,
         search: location.search,
         version: r.version + 1,
       }));
+    };
     const unauthorized = () => {
       setAuthenticated(false);
       setModal('auth');
@@ -53,12 +57,13 @@ function App() {
     setModal(null);
     window.scrollTo(0, 0);
   }
-  const managing = route.path === '/manage';
+  const poolId = /^\/manage\/pools\/([^/]+)\/?$/.exec(route.path)?.[1];
+  const managing = route.path === '/manage' || poolId !== undefined;
   const claiming = route.path === '/claim';
   const key = new URLSearchParams(route.search).get('key') ?? '';
   return (
     <>
-      <header className="app-header">
+      <header className={`app-header${managing ? ' manager-header' : ''}`}>
         <a
           href="/"
           className="brand"
@@ -93,11 +98,15 @@ function App() {
             <Icon name="history" size={17} />
             <span>已领取的兑换码</span>
           </button>
+          {managing && <div className="workspace-menu-slot" ref={setWorkspaceMenuTarget} />}
         </nav>
       </header>
       {managing ? (
         <Manager
           key={route.version}
+          poolId={poolId}
+          onNavigate={go}
+          menuTarget={workspaceMenuTarget}
           onLogout={() => {
             setAuthenticated(false);
             go('/');
@@ -112,16 +121,11 @@ function App() {
       ) : (
         <main className="home-main">
           <div className="home-copy">
-            <span className="intro-pill">
-              <i className="dot green" />
-              兑换码发放，简单一点
-            </span>
             <h1>
               一个链接，
               <br />
               <span>轻松发码。</span>
             </h1>
-            <p>创建码池、批量导入兑换码，分享链接即可发放。</p>
             <div className="home-features">
               <span>
                 <Icon name="check" size={16} />
@@ -129,7 +133,7 @@ function App() {
               </span>
               <span>
                 <Icon name="check" size={16} />
-                独立发码空间
+                批量管理
               </span>
               <span>
                 <Icon name="check" size={16} />
@@ -195,7 +199,12 @@ function App() {
           }}
           onDone={() => {
             setAuthenticated(true);
-            go('/manage');
+            if (managing) {
+              setModal(null);
+              setRoute((r) => ({ ...r, version: r.version + 1 }));
+            } else {
+              go('/manage');
+            }
           }}
         />
       )}
