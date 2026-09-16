@@ -2,10 +2,9 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { Manager } from '../../src/react-app/components/Manager.tsx';
-import { json, mockApi, pool, session } from './helpers.ts';
+import { json, mockApi, pool } from './helpers.ts';
 
 const baseRoutes = {
-  'GET /api/manage/session': () => json(session),
   'GET /api/manage/pools': () => json({ items: [pool] }),
   'GET /api/manage/pools/pool-1/codes?page=1&status=all': () =>
     json({ items: [], total: 0, page: 1, pageSize: 50 }),
@@ -13,7 +12,7 @@ const baseRoutes = {
 
 function renderManager(poolId?: string) {
   const onNavigate = vi.fn();
-  render(<Manager poolId={poolId} menuTarget={null} onLogout={vi.fn()} onNavigate={onNavigate} />);
+  render(<Manager poolId={poolId} onNavigate={onNavigate} />);
   return { onNavigate };
 }
 
@@ -162,7 +161,7 @@ test('停止和恢复发放后刷新状态，提交正确的目标状态', async
   let status = pool.status;
   const setStatus = vi.fn((init: RequestInit) => {
     status = JSON.parse(init.body as string).status;
-    return json({ ok: true });
+    return json({ status });
   });
   mockApi({
     ...baseRoutes,

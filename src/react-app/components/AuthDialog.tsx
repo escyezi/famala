@@ -1,11 +1,19 @@
 import { useState } from 'react';
 import { api, rpc } from '../api.ts';
+import type { Session } from '../../shared/api-types.ts';
 import { CopyButton, Dialog, Icon, Notice } from './ui.tsx';
 
-export function AuthDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+export function AuthDialog({
+  onClose,
+  onDone,
+}: {
+  onClose: () => void;
+  onDone: (session: Session) => void;
+}) {
   const [mode, setMode] = useState<'choose' | 'login' | 'saved'>('choose');
   const [key, setKey] = useState('');
   const [newKey, setNewKey] = useState('');
+  const [newSession, setNewSession] = useState<Session | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
@@ -16,6 +24,7 @@ export function AuthDialog({ onClose, onDone }: { onClose: () => void; onDone: (
     try {
       const result = await api(rpc.api.spaces.$post());
       setNewKey(result.key);
+      setNewSession({ spaceId: result.spaceId, expiresAt: result.expiresAt });
       setMode('saved');
     } catch (e) {
       setError((e as Error).message);
@@ -29,8 +38,8 @@ export function AuthDialog({ onClose, onDone }: { onClose: () => void; onDone: (
     setBusy(true);
     setError('');
     try {
-      await api(rpc.api.login.$post({ json: { key: key.trim() } }));
-      onDone();
+      const session = await api(rpc.api.login.$post({ json: { key: key.trim() } }));
+      onDone(session);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -125,7 +134,11 @@ export function AuthDialog({ onClose, onDone }: { onClose: () => void; onDone: (
             <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />
             我已妥善保存发码 Key
           </label>
-          <button className="button primary full" disabled={!saved} onClick={onDone}>
+          <button
+            className="button primary full"
+            disabled={!saved || !newSession}
+            onClick={() => newSession && onDone(newSession)}
+          >
             进入管理页面
             <Icon name="arrow" size={17} />
           </button>

@@ -2,43 +2,26 @@ import { useEffect, useState } from 'react';
 import { AuthDialog } from './components/AuthDialog.tsx';
 import { ClaimKeyDialog, ClaimPage, HistoryDialog } from './components/Claims.tsx';
 import { Manager } from './components/Manager.tsx';
-import { Icon } from './components/ui.tsx';
-import { readSession } from './api.ts';
+import { Icon, Notice } from './components/ui.tsx';
+import { WorkspaceMenu } from './components/WorkspaceMenu.tsx';
+import { useSession } from './hooks/useSession.ts';
 import './App.css';
 
 function App() {
   const [route, setRoute] = useState(() => ({
     path: location.pathname,
     search: location.search,
-    version: 0,
   }));
   const [modal, setModal] = useState<'auth' | 'claim' | 'history' | null>(null);
-  const [authenticated, setAuthenticated] = useState(false);
-  const [workspaceMenuTarget, setWorkspaceMenuTarget] = useState<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const controller = new AbortController();
-    // Checking a public page's session must not open the login dialog on 401.
-    readSession(controller.signal)
-      .then(() => {
-        if (!controller.signal.aborted) setAuthenticated(true);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setAuthenticated(false);
-      });
-    return () => controller.abort();
-  }, [route.version]);
+  const { session, loading, error, loggingOut, acceptSession, reload, logout } = useSession();
   useEffect(() => {
     const changed = () => {
       setModal(null);
       window.scrollTo(0, 0);
-      setRoute((r) => ({
-        path: location.pathname,
-        search: location.search,
-        version: r.version + 1,
-      }));
+      setRoute({ path: location.pathname, search: location.search });
     };
     const unauthorized = () => {
-      setAuthenticated(false);
+      acceptSession(null);
       setModal('auth');
     };
     window.addEventListener('popstate', changed);
@@ -47,15 +30,17 @@ function App() {
       window.removeEventListener('popstate', changed);
       window.removeEventListener('famala:unauthorized', unauthorized);
     };
-  }, []);
+  }, [acceptSession]);
   function go(path: string) {
     history.pushState(null, '', path);
-    setRoute((r) => ({ path: location.pathname, search: location.search, version: r.version + 1 }));
+    setRoute({ path: location.pathname, search: location.search });
     setModal(null);
     window.scrollTo(0, 0);
   }
   const poolId = /^\/manage\/pools\/([^/]+)\/?$/.exec(route.path)?.[1];
   const managing = route.path === '/manage' || poolId !== undefined;
+  // Derive the protected-route gate so back/forward navigation cannot dismiss it.
+  const needsLogin = managing && !loading && !session && !error;
   const claiming = route.path === '/claim';
   const key = new URLSearchParams(route.search).get('key') ?? '';
   return (
@@ -65,6 +50,7 @@ function App() {
           href="/"
           className="brand"
           onClick={(e) => {
+            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
             e.preventDefault();
             go('/');
           }}
@@ -79,11 +65,12 @@ function App() {
         <span className="header-divider" />
         <span className="product-name">兑换码发放平台</span>
         <nav>
-          {authenticated && (
+          {session && (
             <a
               href="/manage"
               className={managing ? 'current' : ''}
               onClick={(e) => {
+                if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
                 e.preventDefault();
                 go('/manage');
               }}
@@ -95,26 +82,43 @@ function App() {
             <Icon name="history" size={17} />
             <span>已领取的兑换码</span>
           </button>
-          {managing && <div className="workspace-menu-slot" ref={setWorkspaceMenuTarget} />}
+          {managing && session && (
+            <div className="workspace-menu-slot">
+              <WorkspaceMenu
+                key={session.spaceId}
+                session={session}
+                busy={loggingOut}
+                onLogout={async () => {
+                  if (await logout()) go('/');
+                }}
+              />
+            </div>
+          )}
         </nav>
       </header>
       {managing ? (
-        <Manager
-          key={route.version}
-          poolId={poolId}
-          onNavigate={go}
-          menuTarget={workspaceMenuTarget}
-          onLogout={() => {
-            setAuthenticated(false);
-            go('/');
-          }}
-        />
+        <>
+          <Notice>{error}</Notice>
+          {session ? (
+            <Manager key={session.spaceId} poolId={poolId} onNavigate={go} />
+          ) : (
+            <main className="manager-main">
+              <div className="empty-state">
+                {loading ? (
+                  '正在连接发码空间…'
+                ) : error ? (
+                  <button className="button secondary" onClick={() => void reload()}>
+                    重新连接
+                  </button>
+                ) : (
+                  '请登录后管理码池。'
+                )}
+              </div>
+            </main>
+          )}
+        </>
       ) : claiming ? (
-        <ClaimPage
-          key={`${key}:${route.version}`}
-          claimKey={key}
-          onEnterKey={() => setModal('claim')}
-        />
+        <ClaimPage key={key} claimKey={key} onEnterKey={() => setModal('claim')} />
       ) : (
         <main className="home-main">
           <div className="home-copy">
@@ -188,17 +192,16 @@ function App() {
           <span>兑换码使用规则以发码者说明为准</span>
         </footer>
       )}
-      {modal === 'auth' && (
+      {(modal === 'auth' || needsLogin) && (
         <AuthDialog
           onClose={() => {
             setModal(null);
             if (managing) go('/');
           }}
-          onDone={() => {
-            setAuthenticated(true);
+          onDone={(value) => {
+            acceptSession(value);
             if (managing) {
               setModal(null);
-              setRoute((r) => ({ ...r, version: r.version + 1 }));
             } else {
               go('/manage');
             }

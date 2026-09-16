@@ -1,8 +1,20 @@
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import App from '../../src/react-app/App.tsx';
+import type { CodeRow } from '../../src/shared/api-types.ts';
 import { deferred, json, mockApi, pool, session } from './helpers.ts';
+
+const row: CodeRow = {
+  id: 'code-1',
+  code: 'POOL-ONE',
+  claimStatus: 'unclaimed',
+  claimedAt: null,
+  remark: null,
+  userMarkedUsed: false,
+  userMarkedUsedAt: null,
+  createdAt: pool.createdAt,
+};
 
 test('游客打开首页不会因会话 401 弹出登录框，校验领码 Key 后进入领取页', async () => {
   const sessionResponse = deferred<Response>();
@@ -32,7 +44,6 @@ test('管理接口返回 401 时展示登录框，取消后回到首页', async 
   window.history.replaceState(null, '', '/manage');
   mockApi({
     'GET /api/manage/session': () => json({ error: '登录已过期' }, 401),
-    'GET /api/manage/pools': () => json({ error: '登录已过期' }, 401),
   });
   const user = userEvent.setup();
   render(<App />);
@@ -44,17 +55,15 @@ test('管理接口返回 401 时展示登录框，取消后回到首页', async 
 });
 
 test('登录后展示管理入口，通过空间菜单退出后回到首页', async () => {
-  let authenticated = false;
+  const initialSession = deferred<Response>();
+  const readSession = vi.fn(() => initialSession.promise);
   mockApi({
-    'GET /api/manage/session': () =>
-      authenticated ? json(session) : json({ error: '未登录' }, 401),
+    'GET /api/manage/session': readSession,
     'POST /api/login': () => {
-      authenticated = true;
-      return json({ ok: true });
+      return json(session);
     },
     'GET /api/manage/pools': () => json({ items: [] }),
     'POST /api/manage/logout': () => {
-      authenticated = false;
       return json({ ok: true });
     },
   });
@@ -66,6 +75,10 @@ test('登录后展示管理入口，通过空间菜单退出后回到首页', as
   await user.click(screen.getByRole('button', { name: '进入管理页面' }));
   expect(await screen.findByText('从第一个码池开始')).toBeVisible();
   expect(location.pathname).toBe('/manage');
+  // The initial public-page check may finish after login; it must not erase the new session.
+  await act(async () => initialSession.resolve(json({ error: '未登录' }, 401)));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(readSession).toHaveBeenCalledTimes(1);
   expect(screen.getByRole('link', { name: '发码管理' })).toBeVisible();
   const menu = screen.getByRole('button', { name: '我的发码空间' });
   await user.click(menu);
@@ -78,4 +91,103 @@ test('登录后展示管理入口，通过空间菜单退出后回到首页', as
   expect(await screen.findByRole('button', { name: /我要发码/ })).toBeVisible();
   expect(location.pathname).toBe('/');
   expect(screen.queryByRole('link', { name: '发码管理' })).not.toBeInTheDocument();
+});
+
+test('前进后退和切换码池重置详情状态，已离开的请求返回 401 不打断当前页面', async () => {
+  window.history.replaceState(null, '', '/manage');
+  const second = { ...pool, id: 'pool-2', name: '十月福利', claimKey: 'c_second' };
+  const oldCodes = deferred<Response>();
+  let oldSignal: AbortSignal | null | undefined;
+  const readSession = vi.fn(() => json(session));
+  mockApi({
+    'GET /api/manage/session': readSession,
+    'GET /api/manage/pools': () => json({ items: [pool, second] }),
+    'GET /api/manage/pools/pool-1/codes?page=1&status=all': () =>
+      json({ items: [row], total: 1, page: 1, pageSize: 50 }),
+    'GET /api/manage/pools/pool-1/codes?page=1&status=claimed': (init) => {
+      oldSignal = init.signal;
+      return oldCodes.promise;
+    },
+    'GET /api/manage/pools/pool-2/codes?page=1&status=all': () =>
+      json({ items: [{ ...row, code: 'POOL-TWO' }], total: 1, page: 1, pageSize: 50 }),
+  });
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole('link', { name: new RegExp(pool.name) }));
+  await screen.findByText('POOL-ONE');
+  await user.click(screen.getByRole('button', { name: '已领取' }));
+  await user.click(screen.getByRole('button', { name: '修改名称' }));
+  act(() => history.back());
+  await screen.findByRole('heading', { name: '兑换码池', level: 1 });
+  expect(oldSignal?.aborted).toBe(true);
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  act(() => history.forward());
+  await screen.findByText('POOL-ONE');
+  expect(screen.getByRole('button', { name: '全部' })).toHaveClass('active');
+  await user.click(screen.getByRole('link', { name: '返回码池列表' }));
+  await user.click(await screen.findByRole('link', { name: new RegExp(second.name) }));
+  await screen.findByText('POOL-TWO');
+  await act(async () => oldCodes.resolve(json({ error: '旧请求已过期' }, 401)));
+  expect(screen.getByText('POOL-TWO')).toBeVisible();
+  expect(screen.queryByText('POOL-ONE')).not.toBeInTheDocument();
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(readSession).toHaveBeenCalledTimes(1);
+});
+
+test('会话过期清除旧空间详情，重新登录保留目标路由且忽略旧请求结果', async () => {
+  window.history.replaceState(null, '', `/manage/pools/${pool.id}`);
+  const oldCodes = deferred<Response>();
+  let expired = false;
+  let loggedInAgain = false;
+  mockApi({
+    'GET /api/manage/session': () => json(session),
+    'GET /api/manage/pools': () =>
+      expired
+        ? json({ error: '登录已过期' }, 401)
+        : json({ items: [{ ...pool, name: loggedInAgain ? '重新登录的码池' : pool.name }] }),
+    'GET /api/manage/pools/pool-1/codes?page=1&status=all': () =>
+      loggedInAgain
+        ? json({ items: [{ ...row, code: 'NEW-SESSION' }], total: 1, page: 1, pageSize: 50 })
+        : oldCodes.promise,
+    'POST /api/login': () => {
+      expired = false;
+      loggedInAgain = true;
+      return json(session);
+    },
+  });
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole('heading', { name: pool.name, level: 1 });
+  expired = true;
+  await user.click(screen.getByRole('button', { name: '刷新数据' }));
+  await screen.findByRole('dialog', { name: '开始发放兑换码' });
+  expect(screen.queryByText(pool.claimKey)).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: '发码管理' })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: /使用已有 Key/ }));
+  await user.type(screen.getByLabelText('发码 Key'), 'd_saved-key');
+  await user.click(screen.getByRole('button', { name: '进入管理页面' }));
+  await screen.findByText('NEW-SESSION');
+  await act(async () => oldCodes.resolve(json({ items: [row], total: 1, page: 1, pageSize: 50 })));
+  expect(location.pathname).toBe(`/manage/pools/${pool.id}`);
+  expect(screen.getByRole('heading', { name: '重新登录的码池' })).toBeVisible();
+  expect(screen.queryByText('POOL-ONE')).not.toBeInTheDocument();
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
+test('管理页会话查询失败可重试，连接故障不误判为需要登录', async () => {
+  window.history.replaceState(null, '', '/manage');
+  const readSession = vi
+    .fn()
+    .mockImplementationOnce(() => json({ error: '暂时不可用' }, 503))
+    .mockImplementationOnce(() => json(session));
+  const pools = vi.fn(() => json({ items: [] }));
+  mockApi({ 'GET /api/manage/session': readSession, 'GET /api/manage/pools': pools });
+  const user = userEvent.setup();
+  render(<App />);
+  expect(await screen.findByRole('alert')).toHaveTextContent('暂时不可用');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(pools).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button', { name: '重新连接' }));
+  await screen.findByText('从第一个码池开始');
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });

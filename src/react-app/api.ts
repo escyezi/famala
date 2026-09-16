@@ -40,7 +40,12 @@ async function fetchApi(input: RequestInfo | URL, init?: RequestInit, notifyUnau
       0,
     );
   }
-  if (notifyUnauthorized && response.status === 401 && path.startsWith('/api/manage/'))
+  if (
+    notifyUnauthorized &&
+    !init?.signal?.aborted &&
+    response.status === 401 &&
+    path.startsWith('/api/manage/')
+  )
     window.dispatchEvent(new Event('famala:unauthorized'));
   return response;
 }

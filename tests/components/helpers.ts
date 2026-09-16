@@ -1,7 +1,7 @@
 import { act, waitFor } from '@testing-library/react';
 import { expect, vi } from 'vitest';
 import type { ClaimRecord } from '../../src/shared/contracts.ts';
-import type { Pool } from '../../src/shared/api-types.ts';
+import type { Pool, Session } from '../../src/shared/api-types.ts';
 
 type Handler = (init: RequestInit) => Response | Promise<Response>;
 export const unexpectedRequests: string[] = [];
@@ -54,7 +54,7 @@ export const pool: Pool = {
   remaining: 2,
 };
 
-export const session = { spaceId: 'space-12345678', expiresAt: 1_900_000_000_000 };
+export const session: Session = { spaceId: 'space-12345678', expiresAt: 1_900_000_000_000 };
 
 // Exercise our real Turnstile component without loading Cloudflare's remote script.
 export function mockTurnstile() {
