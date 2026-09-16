@@ -53,6 +53,10 @@ npm run build
 npm run check
 ```
 
+`npm run lint` 先运行 `tsc -b`，检查前端、Worker、构建配置和测试的类型，再运行 ESLint。`npm run build` 也保留类型检查，单独构建时仍会验证类型。
+
+类型检查使用 TypeScript 7（`@typescript/native` 是 `typescript` 包的 npm 别名）。ESLint 10 的 `typescript-eslint` 仍依赖旧编译器 API，因此 `typescript` 依赖指向官方 `@typescript/typescript6` 兼容包。两者均为开发依赖；升级时保留这组别名，避免将 ESLint 的 API 依赖直接替换为 TS 7。
+
 `npm test` 使用 Vitest 一次性运行全部测试，`npm run test:watch` 监听修改并重跑。独立的 `vitest.config.ts` 将测试分为两个项目：
 
 - **components**：`tests/components/*.test.tsx`，使用 React Testing Library、user-event 和 jsdom，直接渲染组件并模拟用户操作。无需运行 `npm run dev`、Worker、D1 或浏览器，也不访问 Cloudflare。覆盖登录和 Key 保存确认、领码校验、重复提交防护、验证码过期和重试、备注字数边界、库存状态变化、领取结果持久化与保存失败、历史记录使用标记、复制反馈、码池创建/改名/导入/分页/停止恢复，以及 App 登录、跳转和退出流程。
@@ -83,7 +87,7 @@ npm run check
 - `src/worker/validation.ts` 在服务端校验 JSON 和查询参数，通过 `c.req.valid()` 向处理函数提供已校验的数据，同时声明 RPC 请求类型。类型检查不能替代对外部请求的运行时校验。
 - `src/react-app/api.ts` 使用 `hc<AppType>()`。调用写为 `api(rpc.api.login.$post({ json: { key } }))`，响应类型由路由自动推导；不再通过 `api<T>(path, data)` 指定响应类型。包装层统一保留 Cookie、请求取消、登录过期和网络错误处理，公开页面的会话探测使用 `readSession()`。
 - `src/shared/api-types.ts` 从路由推导页面需要的类型；`contracts.ts` 保留本地持久化记录和共享业务规则，相关接口通过 `satisfies` 检查持久化契约。前端仅导入 Worker 的类型，构建时不包含 Worker 实现。
-- `tests/types/api.types.ts` 随 `npm run build` 的 TypeScript 检查执行，验证错误路径、方法、参数、状态枚举和响应字段会被拒绝。它不发出真实请求；API 集成测试另用真实 Hono 路由和临时 D1 验证客户端序列化与服务端校验。
+- `tests/types/api.types.ts` 随 `npm run lint` 和 `npm run build` 的 TypeScript 检查执行，验证错误路径、方法、参数、状态枚举和响应字段会被拒绝。它不发出真实请求；API 集成测试另用真实 Hono 路由和临时 D1 验证客户端序列化与服务端校验。
 
 新增接口时保持路由链式注册、添加输入校验、明确响应状态码，再通过 `rpc` 调用。Hono RPC 提供编译期契约，不会逐字段校验服务器返回的 JSON；前后端应一同构建和发布。
 

@@ -176,10 +176,11 @@ test('会话过期清除旧空间详情，重新登录保留目标路由且忽�
 
 test('管理页会话查询失败可重试，连接故障不误判为需要登录', async () => {
   window.history.replaceState(null, '', '/manage');
+  const retriedSession = deferred<Response>();
   const readSession = vi
     .fn()
     .mockImplementationOnce(() => json({ error: '暂时不可用' }, 503))
-    .mockImplementationOnce(() => json(session));
+    .mockImplementationOnce(() => retriedSession.promise);
   const pools = vi.fn(() => json({ items: [] }));
   mockApi({ 'GET /api/manage/session': readSession, 'GET /api/manage/pools': pools });
   const user = userEvent.setup();
@@ -188,6 +189,10 @@ test('管理页会话查询失败可重试，连接故障不误判为需要登�
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(pools).not.toHaveBeenCalled();
   await user.click(screen.getByRole('button', { name: '重新连接' }));
+  expect(screen.getByText('正在连接发码空间…')).toBeVisible();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  await act(async () => retriedSession.resolve(json(session)));
   await screen.findByText('从第一个码池开始');
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });

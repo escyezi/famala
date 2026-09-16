@@ -17,28 +17,35 @@ export function useSession() {
     setError('');
   }, []);
 
-  const reload = useCallback(async () => {
+  const loadSession = useCallback(() => {
     pending.current?.abort();
     const controller = new AbortController();
     pending.current = controller;
-    setLoading(true);
-    setError('');
-    try {
-      const value = await readSession(controller.signal);
-      if (!controller.signal.aborted) setSession(value);
-    } catch (error) {
-      if (controller.signal.aborted) return;
-      setSession(null);
-      if (!(error instanceof ApiError && error.status === 401)) setError((error as Error).message);
-    } finally {
-      if (!controller.signal.aborted) setLoading(false);
-    }
+    return readSession(controller.signal)
+      .then((value) => {
+        if (!controller.signal.aborted) setSession(value);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setSession(null);
+        if (!(error instanceof ApiError && error.status === 401))
+          setError((error as Error).message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
   }, []);
 
+  const reload = useCallback(() => {
+    setLoading(true);
+    setError('');
+    return loadSession();
+  }, [loadSession]);
+
   useEffect(() => {
-    void reload();
+    void loadSession();
     return () => pending.current?.abort();
-  }, [reload]);
+  }, [loadSession]);
 
   async function logout() {
     if (loggingOut) return false;
