@@ -96,6 +96,7 @@ export function AuthDialog({ onClose, onDone }: { onClose: () => void; onDone: (
             <button
               type="button"
               className="button secondary"
+              disabled={busy}
               onClick={() => {
                 setMode('choose');
                 setError('');

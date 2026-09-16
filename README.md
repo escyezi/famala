@@ -44,13 +44,27 @@ VS Code 已配置保存时自动格式化，并推荐 Prettier 和 ESLint 扩展
 ## 验证
 
 ```bash
-npm test
+npm run test:components        # 仅组件行为测试，无需启动任何服务
+npm run test:components:watch  # 修改组件或测试时自动重跑
+npm run test:unit              # 现有 API 和存储测试
+npm test                      # 全部测试
 npm run lint
 npm run build
 npm run check
 ```
 
-`npm test` 使用 Vitest 一次性运行测试，`npm run test:watch` 监听修改并重跑测试。测试使用独立的 `vitest.config.ts`，在 Node 环境执行，通过 Wrangler 访问临时本地 D1，独立于开发库。文件内的测试按顺序执行，单个用例内仍会并发请求以验证导入和领取竞争。Siteverify 在接口测试中使用受控响应，覆盖成功、失败、超时、错误 hostname/action 和生产测试密钥禁用。测试包含空间隔离、会话过期/退出、500 条导入边界、并发导入/领取、验证期间停止发放、幂等标记，以及本地记录冲突和存储异常。
+`npm test` 使用 Vitest 一次性运行全部测试，`npm run test:watch` 监听修改并重跑。独立的 `vitest.config.ts` 将测试分为两个项目：
+
+- **components**：`tests/components/*.test.tsx`，使用 React Testing Library、user-event 和 jsdom，直接渲染组件并模拟用户操作。无需运行 `npm run dev`、Worker、D1 或浏览器，也不访问 Cloudflare。覆盖登录和 Key 保存确认、领码校验、重复提交防护、验证码过期和重试、备注字数边界、库存状态变化、领取结果持久化与保存失败、历史记录使用标记、复制反馈、码池创建/改名/导入/分页/停止恢复，以及 App 登录、跳转和退出流程。
+- **unit**：原有 `tests/*.test.mjs`，在 Node 环境执行，通过 Wrangler 自动创建临时本地 D1，独立于开发库。文件内的测试按顺序执行，单个用例内仍会并发请求以验证导入和领取竞争。Siteverify 使用受控响应，覆盖成功、失败、超时、错误 hostname/action 和生产测试密钥禁用；同时覆盖空间隔离、会话过期/退出、500 条导入边界、并发导入/领取、验证期间停止发放、幂等标记，以及本地记录冲突和存储异常。
+
+### 编写组件测试
+
+新用例放在 `tests/components/` 下，命名为 `*.test.tsx`，按按钮名称或输入框标签查找元素，通过 `userEvent` 操作，再断言可见结果、请求内容或本地记录。使用 `findByRole` / `waitFor` 等待异步状态，不使用固定延时。
+
+`helpers.ts` 的 `mockApi` 按 `方法 + 路径` 显式定义网络响应；组件仍调用真实的 `api()`，未声明的请求会使测试失败。通过 `deferred<Response>()` 控制请求完成时机，可以检查等待状态和防重复提交。Turnstile 仅模拟第三方 SDK，通过 `mockTurnstile().trigger('callback', 'token')` 或 `trigger('expired-callback')` 驱动真实验证组件。
+
+`setup.ts` 为每个用例清理 DOM、本地存储、路由和 mock，并补齐必要的浏览器 API。Web Locks 模拟只用于单页面保存，不代表真实跨标签并发验证。jsdom 不验证 CSS 布局、原生弹窗焦点管理、浏览器兼容性或真实 Turnstile 服务；这些仍需浏览器检查。测试 TypeScript 类型也纳入了 `npm run build`。
 
 `npm run check` 依次执行格式检查、代码检查、测试、构建和 `wrangler deploy --dry-run`，不会发布。
 
