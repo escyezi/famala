@@ -87,6 +87,96 @@ const claim = (p, overrides = {}, bindings = env) =>
     bindings,
   );
 
+test('all business tables generate integer IDs without reusing deleted IDs', async () => {
+  const owner = await space();
+  const p = await pool(owner.cookie);
+  assert.ok(Number.isSafeInteger(owner.body.spaceId) && owner.body.spaceId > 0);
+  assert.ok(Number.isSafeInteger(p.id) && p.id > 0);
+  const now = Date.now();
+  const cases = [
+    ['distributor_spaces', ['key_hash', 'created_at'], [crypto.randomUUID(), now]],
+    [
+      'distributor_sessions',
+      ['space_id', 'token_hash', 'created_at', 'expires_at'],
+      [owner.body.spaceId, crypto.randomUUID(), now, now + SESSION_MS],
+    ],
+    [
+      'code_pools',
+      ['space_id', 'name', 'claim_key', 'created_at'],
+      [owner.body.spaceId, 'autoincrement', crypto.randomUUID(), now],
+    ],
+    ['redemption_codes', ['pool_id', 'code', 'created_at'], [p.id, 'AUTO-ID', now]],
+  ];
+  for (const [table, columns, values] of cases) {
+    const insert = () =>
+      env.DB.prepare(
+        `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${values.map(() => '?').join(', ')}) RETURNING id`,
+      )
+        .bind(...values)
+        .first();
+    const first = await insert();
+    assert.ok(Number.isSafeInteger(first.id) && first.id > 0, table);
+    await env.DB.prepare(`DELETE FROM ${table} WHERE id = ?`).bind(first.id).run();
+    const second = await insert();
+    assert.ok(second.id > first.id, `${table} must not reuse its deleted maximum ID`);
+  }
+  assert.deepEqual((await env.DB.prepare('PRAGMA foreign_key_check').all()).results, []);
+});
+
+test('concurrent space creation links each generated ID to its own session and key', async () => {
+  const owners = await Promise.all(Array.from({ length: 8 }, () => space()));
+  assert.equal(new Set(owners.map((owner) => owner.body.spaceId)).size, owners.length);
+  for (const owner of owners) {
+    const session = await request('/api/manage/session', undefined, owner.cookie);
+    const login = await request('/api/login', { key: owner.body.key });
+    assert.equal(session.body.spaceId, owner.body.spaceId);
+    assert.equal(login.body.spaceId, owner.body.spaceId);
+  }
+});
+
+test('failed session insertion rolls back the new space', async () => {
+  const before = await env.DB.prepare('SELECT count(*) AS total FROM distributor_spaces').first();
+  await env.DB.prepare(
+    "CREATE TRIGGER reject_test_session BEFORE INSERT ON distributor_sessions BEGIN SELECT RAISE(ABORT, 'test failure'); END",
+  ).run();
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    const result = await request('/api/spaces', {});
+    assert.equal(result.status, 500);
+    assert.equal(result.cookie, undefined);
+    assert.deepEqual(
+      await env.DB.prepare('SELECT count(*) AS total FROM distributor_spaces').first(),
+      before,
+    );
+  } finally {
+    await env.DB.prepare('DROP TRIGGER reject_test_session').run();
+    log.mockRestore();
+  }
+});
+
+test('pool paths reject malformed and unsafe integer IDs without aliasing another pool', async () => {
+  const owner = await space();
+  const p = await pool(owner.cookie);
+  for (const id of [
+    '0',
+    '-1',
+    `0${p.id}`,
+    `${p.id}.0`,
+    `${p.id}e0`,
+    `${p.id}x`,
+    `+${p.id}`,
+    '9007199254740992',
+    crypto.randomUUID(),
+  ]) {
+    const result = await request(`/api/manage/pools/${id}/codes`, undefined, owner.cookie);
+    assert.equal(result.status, 404, id);
+  }
+  assert.equal(
+    (await request(`/api/manage/pools/${p.id}/codes`, undefined, owner.cookie)).status,
+    200,
+  );
+});
+
 test('space keys are hashed; sessions have seven-day cookies, isolate spaces, expire and revoke', async () => {
   const a = await space();
   const b = await space();
@@ -404,7 +494,7 @@ test('Hono RPC client interoperates with actual routes, JSON validators and quer
   });
   const poolResponse = await authenticated.api.manage.pools.$post({ json: { name: 'RPC pool' } });
   assert.equal(poolResponse.status, 201);
-  const param = { id: (await poolResponse.json()).id };
+  const param = { id: String((await poolResponse.json()).id) };
   const pool = authenticated.api.manage.pools[':id'];
   const imported = await pool.import.$post({ param, json: { text: 'RPC-1\nRPC-2' } });
   assert.equal((await imported.json()).succeeded, 2);

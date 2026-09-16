@@ -14,7 +14,7 @@ export function usePoolDetails(pool: Pool, onRefresh: () => void) {
     const controller = new AbortController();
     api(
       rpc.api.manage.pools[':id'].codes.$get(
-        { param: { id: pool.id }, query: { page: String(page), status: filter } },
+        { param: { id: String(pool.id) }, query: { page: String(page), status: filter } },
         { init: { signal: controller.signal } },
       ),
     )
@@ -51,7 +51,7 @@ export function usePoolDetails(pool: Pool, onRefresh: () => void) {
     try {
       await api(
         rpc.api.manage.pools[':id'].status.$post({
-          param: { id: pool.id },
+          param: { id: String(pool.id) },
           json: { status: pool.status === 'active' ? 'stopped' : 'active' },
         }),
       );

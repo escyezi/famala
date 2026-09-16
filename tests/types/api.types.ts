@@ -9,6 +9,9 @@ export async function apiTypeChecks() {
   expectTypeOf(config.turnstileSiteKey).toEqualTypeOf<string | null>();
   const created = await api(rpc.api.spaces.$post());
   expectTypeOf(created.key).toEqualTypeOf<string>();
+  expectTypeOf(created.spaceId).toEqualTypeOf<number>();
+  const pool = await api(rpc.api.manage.pools.$post({ json: { name: 'New pool' } }));
+  expectTypeOf(pool.id).toEqualTypeOf<number>();
   const renamed = await api(
     rpc.api.manage.pools[':id'].name.$post({
       param: { id: 'pool' },
@@ -16,6 +19,7 @@ export async function apiTypeChecks() {
     }),
   );
   expectTypeOf(renamed.name).toEqualTypeOf<string>();
+  expectTypeOf(renamed.id).toEqualTypeOf<number>();
   // Remark is optional; request input comes from validation, not a caller cast.
   const claimed = await api(
     rpc.api.claim.$post({ json: { claimKey: 'key', turnstileToken: 'token' } }),
@@ -36,6 +40,8 @@ export async function apiTypeChecks() {
   rpc.api.login.$post({ json: { key: 'key', password: 'password' } });
   // @ts-expect-error Route param is required.
   rpc.api.manage.pools[':id'].status.$post({ json: { status: 'active' } });
+  // @ts-expect-error Numeric database IDs must be serialized for URL parameters.
+  rpc.api.manage.pools[':id'].codes.$get({ param: { id: pool.id }, query: {} });
   // @ts-expect-error Status must be a validated enum member.
   rpc.api.manage.pools[':id'].status.$post({ param: { id: 'pool' }, json: { status: 'deleted' } });
   // @ts-expect-error Query enum must match server validation.

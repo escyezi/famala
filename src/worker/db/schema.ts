@@ -1,21 +1,16 @@
 import { sql } from 'drizzle-orm';
 import { check, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
-export const counters = sqliteTable('counters', {
-  id: integer('id').primaryKey(),
-  value: integer('value').notNull().default(0),
-});
-
 export const distributorSpaces = sqliteTable('distributor_spaces', {
-  id: text('id').primaryKey(),
+  id: integer('id').primaryKey({ autoIncrement: true }),
   keyHash: text('key_hash').notNull().unique(),
   createdAt: integer('created_at').notNull(),
 });
 export const distributorSessions = sqliteTable(
   'distributor_sessions',
   {
-    id: text('id').primaryKey(),
-    spaceId: text('space_id')
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    spaceId: integer('space_id')
       .notNull()
       .references(() => distributorSpaces.id),
     tokenHash: text('token_hash').notNull().unique(),
@@ -31,8 +26,8 @@ export const distributorSessions = sqliteTable(
 export const codePools = sqliteTable(
   'code_pools',
   {
-    id: text('id').primaryKey(),
-    spaceId: text('space_id')
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    spaceId: integer('space_id')
       .notNull()
       .references(() => distributorSpaces.id),
     name: text('name').notNull(),
@@ -52,8 +47,8 @@ export const codePools = sqliteTable(
 export const redemptionCodes = sqliteTable(
   'redemption_codes',
   {
-    id: text('id').primaryKey(),
-    poolId: text('pool_id')
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    poolId: integer('pool_id')
       .notNull()
       .references(() => codePools.id),
     code: text('code').notNull(),

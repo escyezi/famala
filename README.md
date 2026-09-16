@@ -119,11 +119,13 @@ npm run check
 
 - 需求：`doc/兑换码发放管理平台.md`
 - Worker/API：`src/worker/index.ts`
-- 数据表：`src/worker/db/schema.ts`；新增业务迁移：`drizzle/0001_noisy_veda.sql`
+- 数据表：`src/worker/db/schema.ts`；初始化迁移：`drizzle/0000_initial.sql`
 - 前后端共享规则：`src/shared/contracts.ts`
 - React 页面：`src/react-app/components/`
 - 本地记录：`src/react-app/storage.ts`
 
-`counters` 演示表及原迁移保留，原计数器页面和接口已由业务功能替代。
+项目尚未部署生产，迁移已合并为 `0000_initial.sql`，只创建 4 张业务表，不再包含 `counters`。所有业务主键使用 `INTEGER PRIMARY KEY AUTOINCREMENT`，外键使用整数；插入时由数据库生成 ID，删除后不复用旧编号，编号可能不连续。API 响应中的 ID 为数字，URL 路径参数仍为字符串，由服务端校验并转换为正安全整数。
+
+新的初始化迁移用于空数据库，不可直接套用在旧 UUID 结构的开发库上。旧开发库需先备份，再转换主外键和迁移记录，或在不需要测试数据时重新初始化本地 D1。后续结构变更继续用 `npm run db:generate` 追加迁移；生产部署后不再改写已应用的迁移。
 
 参考：[Turnstile 服务端验证](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)、[官方测试密钥](https://developers.cloudflare.com/turnstile/troubleshooting/testing/)。

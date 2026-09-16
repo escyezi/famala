@@ -60,8 +60,7 @@ export function WorkspaceMenu({
         <div className="workspace-menu-panel" id={panelId}>
           <strong>我的发码空间</strong>
           <p className="workspace-menu-id">
-            空间编号{' '}
-            <code>{session ? session.spaceId.slice(0, 8).toUpperCase() : '正在连接…'}</code>
+            空间编号 <code>{session ? session.spaceId : '正在连接…'}</code>
           </p>
           <div className="workspace-menu-note">
             <Icon name="key" size={16} />

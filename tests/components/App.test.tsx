@@ -7,7 +7,7 @@ import type { CodeRow } from '../../src/shared/api-types.ts';
 import { deferred, json, mockApi, pool, session } from './helpers.ts';
 
 const row: CodeRow = {
-  id: 'code-1',
+  id: 1,
   code: 'POOL-ONE',
   claimStatus: 'unclaimed',
   claimedAt: null,
@@ -85,6 +85,7 @@ test('登录后展示管理入口，通过空间菜单退出后回到首页', as
   const menu = screen.getByRole('button', { name: '我的发码空间' });
   await user.click(menu);
   expect(menu).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByText(String(session.spaceId))).toBeVisible();
   await user.keyboard('{Escape}');
   expect(menu).toHaveAttribute('aria-expanded', 'false');
   expect(menu).toHaveFocus();
@@ -97,20 +98,20 @@ test('登录后展示管理入口，通过空间菜单退出后回到首页', as
 
 test('前进后退和切换码池重置详情状态，已离开的请求返回 401 不打断当前页面', async () => {
   window.history.replaceState(null, '', '/manage');
-  const second = { ...pool, id: 'pool-2', name: '十月福利', claimKey: 'c_second' };
+  const second = { ...pool, id: 2, name: '十月福利', claimKey: 'c_second' };
   const oldCodes = deferred<Response>();
   let oldSignal: AbortSignal | null | undefined;
   const readSession = vi.fn(() => json(session satisfies ApiResponses['session']));
   mockApi({
     'GET /api/manage/session': readSession,
     'GET /api/manage/pools': () => json({ items: [pool, second] } satisfies ApiResponses['pools']),
-    'GET /api/manage/pools/pool-1/codes?page=1&status=all': () =>
+    'GET /api/manage/pools/1/codes?page=1&status=all': () =>
       json({ items: [row], total: 1, page: 1, pageSize: 50 } satisfies ApiResponses['codes']),
-    'GET /api/manage/pools/pool-1/codes?page=1&status=claimed': (init) => {
+    'GET /api/manage/pools/1/codes?page=1&status=claimed': (init) => {
       oldSignal = init.signal;
       return oldCodes.promise;
     },
-    'GET /api/manage/pools/pool-2/codes?page=1&status=all': () =>
+    'GET /api/manage/pools/2/codes?page=1&status=all': () =>
       json({
         items: [{ ...row, code: 'POOL-TWO' }],
         total: 1,
@@ -154,7 +155,7 @@ test('会话过期清除旧空间详情，重新登录保留目标路由且忽�
         : json({
             items: [{ ...pool, name: loggedInAgain ? '重新登录的码池' : pool.name }],
           } satisfies ApiResponses['pools']),
-    'GET /api/manage/pools/pool-1/codes?page=1&status=all': () =>
+    'GET /api/manage/pools/1/codes?page=1&status=all': () =>
       loggedInAgain
         ? json({
             items: [{ ...row, code: 'NEW-SESSION' }],

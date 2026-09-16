@@ -7,7 +7,7 @@ import { json, mockApi, pool } from './helpers.ts';
 
 const baseRoutes = {
   'GET /api/manage/pools': () => json({ items: [pool] } satisfies ApiResponses['pools']),
-  'GET /api/manage/pools/pool-1/codes?page=1&status=all': () =>
+  'GET /api/manage/pools/1/codes?page=1&status=all': () =>
     json({ items: [], total: 0, page: 1, pageSize: 50 } satisfies ApiResponses['codes']),
 };
 
@@ -18,7 +18,7 @@ function renderManager(poolId?: string) {
 }
 
 test('创建码池去掉名称首尾空白，成功后导航至新码池', async () => {
-  const create = vi.fn(() => json({ id: 'new-pool' } satisfies ApiResponses['createPool'], 201));
+  const create = vi.fn(() => json({ id: 3 } satisfies ApiResponses['createPool'], 201));
   mockApi({ ...baseRoutes, 'POST /api/manage/pools': create });
   const user = userEvent.setup();
   const { onNavigate } = renderManager();
@@ -29,7 +29,7 @@ test('创建码池去掉名称首尾空白，成功后导航至新码池', async
   expect(submit).toBeDisabled();
   await user.type(within(dialog).getByLabelText('码池名称'), '  十月福利  ');
   await user.click(submit);
-  await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('/manage/pools/new-pool'));
+  await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('/manage/pools/3'));
   expect(create).toHaveBeenCalledWith(
     expect.objectContaining({ body: JSON.stringify({ name: '十月福利' }) }),
   );
@@ -48,10 +48,10 @@ test('修改名称遇到重名时保持弹窗，修正后更新详情标题', as
     ...baseRoutes,
     'GET /api/manage/pools': () =>
       json({ items: [{ ...pool, name }] } satisfies ApiResponses['pools']),
-    'POST /api/manage/pools/pool-1/name': rename,
+    'POST /api/manage/pools/1/name': rename,
   });
   const user = userEvent.setup();
-  renderManager(pool.id);
+  renderManager(String(pool.id));
   await user.click(await screen.findByRole('button', { name: '修改名称' }));
   const submit = screen.getByRole('button', { name: '保存名称' });
   const input = screen.getByLabelText('码池名称');
@@ -84,10 +84,10 @@ test('批量导入展示原始失败行和成功数量，完成后防止重复�
       json({
         items: [{ ...pool, total: imported ? 3 : 2, remaining: imported ? 3 : 2 }],
       } satisfies ApiResponses['pools']),
-    'POST /api/manage/pools/pool-1/import': importCodes,
+    'POST /api/manage/pools/1/import': importCodes,
   });
   const user = userEvent.setup();
-  renderManager(pool.id);
+  renderManager(String(pool.id));
   await user.click(await screen.findByRole('button', { name: '导入兑换码' }));
   const dialog = screen.getByRole('dialog', { name: '导入兑换码' });
   const submit = within(dialog).getByRole('button', { name: '开始导入' });
@@ -114,7 +114,7 @@ test('批量导入展示原始失败行和成功数量，完成后防止重复�
 test('批量导入超过 500 条时禁止提交', async () => {
   mockApi(baseRoutes);
   const user = userEvent.setup();
-  renderManager(pool.id);
+  renderManager(String(pool.id));
   await user.click(await screen.findByRole('button', { name: '导入兑换码' }));
   await user.click(screen.getByLabelText(/兑换码内容/));
   await user.paste(Array.from({ length: 501 }, (_, i) => `CODE-${i}`).join('\n'));
@@ -124,7 +124,7 @@ test('批量导入超过 500 条时禁止提交', async () => {
 
 test('按接口 pageSize 分页，切换领取筛选时回到第一页并更新明细', async () => {
   const row: ApiResponses['codes']['items'][number] = {
-    id: 'code-1',
+    id: 1,
     code: 'FIRST-PAGE',
     claimStatus: 'unclaimed',
     claimedAt: null,
@@ -135,16 +135,16 @@ test('按接口 pageSize 分页，切换领取筛选时回到第一页并更新�
   };
   mockApi({
     ...baseRoutes,
-    'GET /api/manage/pools/pool-1/codes?page=1&status=all': () =>
+    'GET /api/manage/pools/1/codes?page=1&status=all': () =>
       json({ items: [row], total: 2, page: 1, pageSize: 1 } satisfies ApiResponses['codes']),
-    'GET /api/manage/pools/pool-1/codes?page=2&status=all': () =>
+    'GET /api/manage/pools/1/codes?page=2&status=all': () =>
       json({
         items: [{ ...row, code: 'SECOND-PAGE' }],
         total: 2,
         page: 2,
         pageSize: 1,
       } satisfies ApiResponses['codes']),
-    'GET /api/manage/pools/pool-1/codes?page=1&status=claimed': () =>
+    'GET /api/manage/pools/1/codes?page=1&status=claimed': () =>
       json({
         items: [{ ...row, code: 'CLAIMED-CODE', claimStatus: 'claimed' }],
         total: 1,
@@ -153,7 +153,7 @@ test('按接口 pageSize 分页，切换领取筛选时回到第一页并更新�
       } satisfies ApiResponses['codes']),
   });
   const user = userEvent.setup();
-  renderManager(pool.id);
+  renderManager(String(pool.id));
   await screen.findByText('FIRST-PAGE');
   expect(screen.getByRole('button', { name: '上一页' })).toBeDisabled();
   await user.click(screen.getByRole('button', { name: '下一页' }));
@@ -176,10 +176,10 @@ test('停止和恢复发放后刷新状态，提交正确的目标状态', async
     ...baseRoutes,
     'GET /api/manage/pools': () =>
       json({ items: [{ ...pool, status }] } satisfies ApiResponses['pools']),
-    'POST /api/manage/pools/pool-1/status': setStatus,
+    'POST /api/manage/pools/1/status': setStatus,
   });
   const user = userEvent.setup();
-  renderManager(pool.id);
+  renderManager(String(pool.id));
   await user.click(await screen.findByRole('button', { name: '停止发放' }));
   expect(await screen.findByText('已停止')).toBeVisible();
   expect(setStatus).toHaveBeenLastCalledWith(

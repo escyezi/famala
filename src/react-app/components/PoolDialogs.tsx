@@ -33,7 +33,10 @@ export function ImportDialog({
     try {
       setResult(
         await api(
-          rpc.api.manage.pools[':id'].import.$post({ param: { id: pool.id }, json: { text } }),
+          rpc.api.manage.pools[':id'].import.$post({
+            param: { id: String(pool.id) },
+            json: { text },
+          }),
         ),
       );
       onImported();
@@ -120,7 +123,7 @@ export function PoolNameDialog({
 }: {
   pool?: Pool;
   onClose: () => void;
-  onSaved: (id: string) => void;
+  onSaved: (id: number) => void;
 }) {
   const [name, setName] = useState(pool?.name ?? '');
   const [busy, setBusy] = useState(false);
@@ -133,7 +136,9 @@ export function PoolNameDialog({
     try {
       const json = { name: name.trim() };
       const result = pool
-        ? await api(rpc.api.manage.pools[':id'].name.$post({ param: { id: pool.id }, json }))
+        ? await api(
+            rpc.api.manage.pools[':id'].name.$post({ param: { id: String(pool.id) }, json }),
+          )
         : await api(rpc.api.manage.pools.$post({ json }));
       onSaved(result.id);
     } catch (e) {

@@ -11,7 +11,7 @@ export function Manager({
   onNavigate: (path: string) => void;
 }) {
   const { pools, loading, error, refresh } = usePools(poolId);
-  const pool = pools?.find((item) => item.id === poolId);
+  const pool = pools?.find((item) => String(item.id) === poolId);
   return (
     <div className="workspace">
       <main className="manager-main">

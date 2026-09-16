@@ -7,5 +7,5 @@ export interface Bindings {
 }
 export type AppEnv = {
   Bindings: Bindings;
-  Variables: { spaceId: string; sessionId: string; expiresAt: number };
+  Variables: { spaceId: number; sessionId: number; expiresAt: number };
 };

@@ -70,10 +70,14 @@ const poolColumns = {
     ),
 };
 async function ownedPool(c: Context<AppEnv>) {
+  const rawId = c.req.param('id') ?? '';
+  const id = Number(rawId);
+  if (!/^[1-9]\d*$/.test(rawId) || !Number.isSafeInteger(id))
+    throw new HTTPException(404, { message: '兑换码池不存在' });
   const pool = await drizzle(c.env.DB)
     .select()
     .from(codePools)
-    .where(and(eq(codePools.id, c.req.param('id') ?? ''), eq(codePools.spaceId, c.get('spaceId'))))
+    .where(and(eq(codePools.id, id), eq(codePools.spaceId, c.get('spaceId'))))
     .get();
   if (!pool) throw new HTTPException(404, { message: '兑换码池不存在' });
   return pool;
@@ -106,23 +110,25 @@ const routes = app
     const db = drizzle(c.env.DB);
     const key = randomKey('d_');
     const token = randomKey('s_');
-    const spaceId = crypto.randomUUID();
+    const keyHash = await digest(key);
     const now = Date.now();
     const expiresAt = now + SESSION_MS;
-    await db.batch([
+    // Resolve the generated ID by its unique key hash inside the same transaction.
+    // If session creation fails, the space insert is rolled back as well.
+    const [spaces] = await db.batch([
       db
         .insert(distributorSpaces)
-        .values({ id: spaceId, keyHash: await digest(key), createdAt: now }),
+        .values({ keyHash, createdAt: now })
+        .returning({ id: distributorSpaces.id }),
       db.insert(distributorSessions).values({
-        id: crypto.randomUUID(),
-        spaceId,
+        spaceId: sql`(SELECT ${distributorSpaces.id} FROM ${distributorSpaces} WHERE ${distributorSpaces.keyHash} = ${keyHash})`,
         tokenHash: await digest(token),
         createdAt: now,
         expiresAt,
       }),
     ]);
     sessionCookie(c, token, expiresAt);
-    return c.json({ key, spaceId, expiresAt }, 201);
+    return c.json({ key, spaceId: spaces[0].id, expiresAt }, 201);
   })
   .post('/api/login', loginInput, async (c) => {
     const { key } = c.req.valid('json');
@@ -137,7 +143,6 @@ const routes = app
     const now = Date.now();
     const expiresAt = now + SESSION_MS;
     await db.insert(distributorSessions).values({
-      id: crypto.randomUUID(),
       spaceId: space.id,
       tokenHash: await digest(token),
       createdAt: now,
@@ -172,7 +177,6 @@ const routes = app
     const pool = await drizzle(c.env.DB)
       .insert(codePools)
       .values({
-        id: crypto.randomUUID(),
         spaceId: c.get('spaceId'),
         name: name.trim(),
         claimKey: randomKey('c_'),
@@ -189,7 +193,7 @@ const routes = app
     const { name } = c.req.valid('json');
     // Only the name changes. The existing unique constraint also protects against
     // two pools being renamed to the same name concurrently.
-    const renamed = await drizzle(c.env.DB).get<{ id: string; name: string }>(sql`
+    const renamed = await drizzle(c.env.DB).get<{ id: number; name: string }>(sql`
     UPDATE OR IGNORE code_pools SET name = ${name.trim()}
     WHERE id = ${pool.id} AND space_id = ${c.get('spaceId')}
     RETURNING id, name
@@ -218,15 +222,13 @@ const routes = app
     const { valid, failures } = parsed;
     const now = Date.now();
     let succeeded = 0;
-    // 20 rows × 4 bound values stays below D1's 100-parameter limit. The unique
+    // 20 rows × 3 bound values stays below D1's 100-parameter limit. The unique
     // constraint handles concurrent imports; only duplicate codes are skipped.
     for (let offset = 0; offset < valid.length; offset += 20) {
       const chunk = valid.slice(offset, offset + 20);
-      const tuples = chunk.map(
-        (row) => sql`(${crypto.randomUUID()}, ${pool.id}, ${row.code}, ${now})`,
-      );
+      const tuples = chunk.map((row) => sql`(${pool.id}, ${row.code}, ${now})`);
       const inserted = await drizzle(c.env.DB).all<{ code: string }>(sql`
-      INSERT INTO redemption_codes (id, pool_id, code, created_at) VALUES ${sql.join(tuples, sql`, `)}
+      INSERT INTO redemption_codes (pool_id, code, created_at) VALUES ${sql.join(tuples, sql`, `)}
       ON CONFLICT (pool_id, code) DO NOTHING RETURNING code
     `);
       const saved = new Set(inserted.map((row) => row.code));

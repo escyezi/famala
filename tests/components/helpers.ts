@@ -67,7 +67,7 @@ export const claimRecord = {
 } satisfies ClaimRecord & ApiResponses['claim'];
 
 export const pool: Pool = {
-  id: 'pool-1',
+  id: 1,
   name: claimRecord.poolName,
   claimKey: claimRecord.claimKey,
   status: 'active',
@@ -78,7 +78,7 @@ export const pool: Pool = {
 };
 
 export const session = {
-  spaceId: '12345678-1234-4000-8000-123456789abc',
+  spaceId: 123456789,
   expiresAt: 1_900_000_000_000,
 } satisfies Session & Pick<ApiResponses['createSpace'], 'spaceId' | 'expiresAt'>;
 
