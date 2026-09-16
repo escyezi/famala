@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api } from '../api.ts';
+import { api, rpc } from '../api.ts';
 import { CopyButton, Dialog, Icon, Notice } from './ui.tsx';
 
 export function AuthDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
@@ -14,7 +14,7 @@ export function AuthDialog({ onClose, onDone }: { onClose: () => void; onDone: (
     setBusy(true);
     setError('');
     try {
-      const result = await api<{ key: string }>('/api/spaces', {});
+      const result = await api(rpc.api.spaces.$post());
       setNewKey(result.key);
       setMode('saved');
     } catch (e) {
@@ -29,7 +29,7 @@ export function AuthDialog({ onClose, onDone }: { onClose: () => void; onDone: (
     setBusy(true);
     setError('');
     try {
-      await api('/api/login', { key: key.trim() });
+      await api(rpc.api.login.$post({ json: { key: key.trim() } }));
       onDone();
     } catch (e) {
       setError((e as Error).message);

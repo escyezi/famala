@@ -7,7 +7,8 @@ import { json, mockApi, pool, session } from './helpers.ts';
 const baseRoutes = {
   'GET /api/manage/session': () => json(session),
   'GET /api/manage/pools': () => json({ items: [pool] }),
-  'GET /api/manage/pools/pool-1/codes?page=1&status=all': () => json({ items: [], total: 0 }),
+  'GET /api/manage/pools/pool-1/codes?page=1&status=all': () =>
+    json({ items: [], total: 0, page: 1, pageSize: 50 }),
 };
 
 function renderManager(poolId?: string) {
@@ -118,7 +119,7 @@ test('批量导入超过 500 条时禁止提交', async () => {
   expect(screen.getByRole('button', { name: '开始导入' })).toBeDisabled();
 });
 
-test('切换领取筛选时回到第一页并更新明细', async () => {
+test('按接口 pageSize 分页，切换领取筛选时回到第一页并更新明细', async () => {
   const row = {
     id: 'code-1',
     code: 'FIRST-PAGE',
@@ -131,11 +132,17 @@ test('切换领取筛选时回到第一页并更新明细', async () => {
   };
   mockApi({
     ...baseRoutes,
-    'GET /api/manage/pools/pool-1/codes?page=1&status=all': () => json({ items: [row], total: 51 }),
+    'GET /api/manage/pools/pool-1/codes?page=1&status=all': () =>
+      json({ items: [row], total: 2, page: 1, pageSize: 1 }),
     'GET /api/manage/pools/pool-1/codes?page=2&status=all': () =>
-      json({ items: [{ ...row, code: 'SECOND-PAGE' }], total: 51 }),
+      json({ items: [{ ...row, code: 'SECOND-PAGE' }], total: 2, page: 2, pageSize: 1 }),
     'GET /api/manage/pools/pool-1/codes?page=1&status=claimed': () =>
-      json({ items: [{ ...row, code: 'CLAIMED-CODE', claimStatus: 'claimed' }], total: 1 }),
+      json({
+        items: [{ ...row, code: 'CLAIMED-CODE', claimStatus: 'claimed' }],
+        total: 1,
+        page: 1,
+        pageSize: 50,
+      }),
   });
   const user = userEvent.setup();
   renderManager(pool.id);

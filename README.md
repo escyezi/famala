@@ -62,11 +62,23 @@ npm run check
 
 新用例放在 `tests/components/` 下，命名为 `*.test.tsx`，按按钮名称或输入框标签查找元素，通过 `userEvent` 操作，再断言可见结果、请求内容或本地记录。使用 `findByRole` / `waitFor` 等待异步状态，不使用固定延时。
 
-`helpers.ts` 的 `mockApi` 按 `方法 + 路径` 显式定义网络响应；组件仍调用真实的 `api()`，未声明的请求会使测试失败。通过 `deferred<Response>()` 控制请求完成时机，可以检查等待状态和防重复提交。Turnstile 仅模拟第三方 SDK，通过 `mockTurnstile().trigger('callback', 'token')` 或 `trigger('expired-callback')` 驱动真实验证组件。
+`helpers.ts` 的 `mockApi` 按 `方法 + 路径` 显式定义网络响应；组件仍调用真实的 Hono RPC 客户端和 `api()`，未声明的请求会使测试失败。通过 `deferred<Response>()` 控制请求完成时机，可以检查等待状态和防重复提交。Turnstile 仅模拟第三方 SDK，通过 `mockTurnstile().trigger('callback', 'token')` 或 `trigger('expired-callback')` 驱动真实验证组件。
 
 `setup.ts` 为每个用例清理 DOM、本地存储、路由和 mock，并补齐必要的浏览器 API。Web Locks 模拟只用于单页面保存，不代表真实跨标签并发验证。jsdom 不验证 CSS 布局、原生弹窗焦点管理、浏览器兼容性或真实 Turnstile 服务；这些仍需浏览器检查。测试 TypeScript 类型也纳入了 `npm run build`。
 
 `npm run check` 依次执行格式检查、代码检查、测试、构建和 `wrangler deploy --dry-run`，不会发布。
+
+## API 类型链路
+
+前后端通过 [Hono RPC](https://hono.dev/docs/guides/rpc) 共享接口类型，无需额外生成客户端：
+
+- `src/worker/index.ts` 链式注册路由并导出 `AppType`。路由返回 `c.json(data, 200)` / `201` 等明确状态码，使客户端可以区分成功与错误响应。
+- `src/worker/validation.ts` 在服务端校验 JSON 和查询参数，通过 `c.req.valid()` 向处理函数提供已校验的数据，同时声明 RPC 请求类型。类型检查不能替代对外部请求的运行时校验。
+- `src/react-app/api.ts` 使用 `hc<AppType>()`。调用写为 `api(rpc.api.login.$post({ json: { key } }))`，响应类型由路由自动推导；不再通过 `api<T>(path, data)` 指定响应类型。包装层统一保留 Cookie、请求取消、登录过期和网络错误处理，公开页面的会话探测使用 `readSession()`。
+- `src/shared/api-types.ts` 从路由推导页面需要的类型；`contracts.ts` 保留本地持久化记录和共享业务规则，相关接口通过 `satisfies` 检查持久化契约。前端仅导入 Worker 的类型，构建时不包含 Worker 实现。
+- `tests/types/api.types.ts` 随 `npm run build` 的 TypeScript 检查执行，验证错误路径、方法、参数、状态枚举和响应字段会被拒绝。它不发出真实请求；API 集成测试另用真实 Hono 路由和临时 D1 验证客户端序列化与服务端校验。
+
+新增接口时保持路由链式注册、添加输入校验、明确响应状态码，再通过 `rpc` 调用。Hono RPC 提供编译期契约，不会逐字段校验服务器返回的 JSON；前后端应一同构建和发布。
 
 ## 生产配置
 

@@ -1,6 +1,7 @@
 import { act, waitFor } from '@testing-library/react';
 import { expect, vi } from 'vitest';
-import type { ClaimRecord, Pool } from '../../src/shared/contracts.ts';
+import type { ClaimRecord } from '../../src/shared/contracts.ts';
+import type { Pool } from '../../src/shared/api-types.ts';
 
 type Handler = (init: RequestInit) => Response | Promise<Response>;
 export const unexpectedRequests: string[] = [];

@@ -3,5 +3,5 @@
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tests.tsbuildinfo"
   },
-  "include": ["tests/components", "src/react-app/vite-env.d.ts"]
+  "include": ["tests/components", "tests/types", "src/react-app/vite-env.d.ts"]
 }

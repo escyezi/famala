@@ -1,19 +1,3 @@
-export type PoolStatus = 'active' | 'stopped';
-export interface Pool {
-  id: string;
-  name: string;
-  claimKey: string;
-  status: PoolStatus;
-  createdAt: number;
-  total: number;
-  claimed: number;
-  remaining: number;
-}
-export interface PublicPool {
-  name: string;
-  status: PoolStatus;
-  remaining: number;
-}
 export interface ClaimRecord {
   poolName: string;
   claimKey: string;
@@ -22,37 +6,14 @@ export interface ClaimRecord {
   userMarkedUsed: boolean;
   userMarkedUsedAt: number | null;
 }
-export interface CodeRow {
-  id: string;
-  code: string;
-  claimStatus: 'unclaimed' | 'claimed';
-  claimedAt: number | null;
-  remark: string | null;
-  userMarkedUsed: boolean;
-  userMarkedUsedAt: number | null;
-  createdAt: number;
-}
 export interface ImportFailure {
   line: number;
   code: string;
   reason: string;
 }
-export interface ImportResult {
-  succeeded: number;
-  failed: number;
-  failures: ImportFailure[];
-}
 export interface UsedResult {
   userMarkedUsed: true;
   userMarkedUsedAt: number;
-}
-export interface PublicConfig {
-  turnstileSiteKey: string | null;
-  testMode: boolean;
-}
-export interface Session {
-  spaceId: string;
-  expiresAt: number;
 }
 export const codePointLength = (value: string) => Array.from(value).length;
 

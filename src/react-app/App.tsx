@@ -3,6 +3,7 @@ import { AuthDialog } from './components/AuthDialog.tsx';
 import { ClaimKeyDialog, ClaimPage, HistoryDialog } from './components/Claims.tsx';
 import { Manager } from './components/Manager.tsx';
 import { Icon } from './components/ui.tsx';
+import { readSession } from './api.ts';
 import './App.css';
 
 function App() {
@@ -17,13 +18,9 @@ function App() {
   useEffect(() => {
     const controller = new AbortController();
     // Checking a public page's session must not open the login dialog on 401.
-    fetch('/api/manage/session', {
-      credentials: 'same-origin',
-      cache: 'no-store',
-      signal: controller.signal,
-    })
-      .then((response) => {
-        if (!controller.signal.aborted) setAuthenticated(response.ok);
+    readSession(controller.signal)
+      .then(() => {
+        if (!controller.signal.aborted) setAuthenticated(true);
       })
       .catch(() => {
         if (!controller.signal.aborted) setAuthenticated(false);

@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, test, vi } from 'vitest';
 import { readdir, readFile } from 'node:fs/promises';
 import { getPlatformProxy } from 'wrangler';
 import app from '../src/worker/index.ts';
+import { hc } from 'hono/client';
 import { digest, SESSION_MS } from '../src/worker/auth.ts';
 
 let proxy;
@@ -385,4 +386,63 @@ test('renaming preserves claims and sharing keys; duplicate and concurrent names
   assert.equal(updated.createdAt, p.createdAt);
   const races = await Promise.all([rename(p.id, '同一个名字'), rename(other.id, '同一个名字')]);
   assert.deepEqual(races.map((r) => r.status).sort(), [200, 409]);
+});
+
+test('Hono RPC client interoperates with actual routes, JSON validators and query parsing', async () => {
+  const client = hc('https://famala.example', {
+    fetch: (input, init) => app.request(input, init, env),
+    headers: { 'Content-Type': 'application/json' },
+  });
+  const created = await client.api.spaces.$post();
+  assert.equal(created.status, 201);
+  const { key } = await created.json();
+  const login = await client.api.login.$post({ json: { key } });
+  assert.equal(login.status, 200);
+  const authenticated = hc('https://famala.example', {
+    fetch: (input, init) => app.request(input, init, env),
+    headers: { Cookie: login.headers.get('set-cookie').split(';')[0] },
+  });
+  const poolResponse = await authenticated.api.manage.pools.$post({ json: { name: 'RPC pool' } });
+  assert.equal(poolResponse.status, 201);
+  const param = { id: (await poolResponse.json()).id };
+  const pool = authenticated.api.manage.pools[':id'];
+  const imported = await pool.import.$post({ param, json: { text: 'RPC-1\nRPC-2' } });
+  assert.equal((await imported.json()).succeeded, 2);
+  const codes = await pool.codes.$get({ param, query: { page: '1', status: 'unclaimed' } });
+  const page = await codes.json();
+  assert.equal(page.page, 1);
+  assert.equal(page.pageSize, 50);
+  assert.equal(page.total, 2);
+  assert.equal(page.items.length, 2);
+  assert.equal((await pool.status.$post({ param, json: { status: 'stopped' } })).status, 200);
+});
+
+test('RPC validators reject untyped callers with invalid body and query fields', async () => {
+  const owner = await space();
+  const p = await pool(owner.cookie);
+  for (const [suffix, data] of [
+    ['/name', { name: 42 }],
+    ['/status', { status: 'deleted' }],
+    ['/import', { text: ['CODE'] }],
+  ])
+    assert.equal(
+      (await request(`/api/manage/pools/${p.id}${suffix}`, data, owner.cookie)).status,
+      400,
+    );
+  for (const query of [
+    'page=0',
+    'page=1.5',
+    'page=1&page=2',
+    'status=used',
+    'status=all&status=claimed',
+  ])
+    assert.equal(
+      (await request(`/api/manage/pools/${p.id}/codes?${query}`, undefined, owner.cookie)).status,
+      400,
+    );
+  assert.equal((await request('/api/login', { key: 42 })).status, 401);
+  assert.equal((await request('/api/claim/validate', { claimKey: 42 })).status, 404);
+  assert.equal((await request('/api/claim/used', { claimKey: p.claimKey, code: 42 })).status, 400);
+  assert.equal((await claim(p, { turnstileToken: 42 })).status, 400);
+  assert.equal(verificationCalls, 0);
 });

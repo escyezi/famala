@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, ApiError, dateTime } from '../api.ts';
+import { api, rpc, ApiError, dateTime } from '../api.ts';
 import { readRecords, saveClaim, saveUsed, subscribeRecords } from '../storage.ts';
 import { normalizeRemark, codePointLength } from '../../shared/contracts.ts';
-import type { ClaimRecord, PublicConfig, PublicPool, UsedResult } from '../../shared/contracts.ts';
+import type { ClaimRecord, UsedResult } from '../../shared/contracts.ts';
 import { CopyButton, Dialog, Icon, Notice } from './ui.tsx';
+import type { PublicConfig, PublicPool } from '../../shared/api-types.ts';
 import { Turnstile } from './Turnstile.tsx';
 
 function RecordCard({
@@ -23,10 +24,14 @@ function RecordCard({
     setBusy(true);
     setError('');
     try {
-      const result = await api<UsedResult>('/api/claim/used', {
-        claimKey: record.claimKey,
-        code: record.code,
-      });
+      const result = await api(
+        rpc.api.claim.used.$post({
+          json: {
+            claimKey: record.claimKey,
+            code: record.code,
+          },
+        }),
+      );
       setUsed(result);
       onMarked?.({ ...record, ...result });
       setWarning(await saveUsed(record, result));
@@ -108,7 +113,7 @@ export function ClaimKeyDialog({
     setBusy(true);
     setError('');
     try {
-      await api('/api/claim/validate', { claimKey: key.trim() });
+      await api(rpc.api.claim.validate.$post({ json: { claimKey: key.trim() } }));
       onValidated(key.trim());
     } catch (e) {
       setError((e as Error).message);
@@ -162,8 +167,13 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
-      api<PublicPool>('/api/claim/validate', { claimKey }, controller.signal),
-      api<PublicConfig>('/api/config', undefined, controller.signal),
+      api(
+        rpc.api.claim.validate.$post(
+          { json: { claimKey } },
+          { init: { signal: controller.signal } },
+        ),
+      ),
+      api(rpc.api.config.$get(undefined, { init: { signal: controller.signal } })),
     ])
       .then(([p, conf]) => {
         setPool(p);
@@ -208,11 +218,15 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
     setBusy(true);
     setError('');
     try {
-      const claimed = await api<ClaimRecord>('/api/claim', {
-        claimKey,
-        remark,
-        turnstileToken: token,
-      });
+      const claimed = await api(
+        rpc.api.claim.$post({
+          json: {
+            claimKey,
+            remark,
+            turnstileToken: token,
+          },
+        }),
+      );
       setResult(claimed);
       setWarning(await saveClaim(claimed));
     } catch (e) {

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { api, dateTime } from '../api.ts';
+import { api, rpc, dateTime } from '../api.ts';
 import { parseImport } from '../../shared/contracts.ts';
-import type { CodeRow, ImportResult, Pool, Session } from '../../shared/contracts.ts';
+import type { CodePage, CodeFilter, ImportResult, Pool, Session } from '../../shared/api-types.ts';
 import { CopyButton, Dialog, Icon, Notice } from './ui.tsx';
 import { WorkspaceMenu } from './WorkspaceMenu.tsx';
 
@@ -33,7 +33,11 @@ function ImportDialog({
     }
     setBusy(true);
     try {
-      setResult(await api<ImportResult>(`/api/manage/pools/${pool.id}/import`, { text }));
+      setResult(
+        await api(
+          rpc.api.manage.pools[':id'].import.$post({ param: { id: pool.id }, json: { text } }),
+        ),
+      );
       onImported();
     } catch (e) {
       setError((e as Error).message);
@@ -129,10 +133,10 @@ function PoolNameDialog({
     setBusy(true);
     setError('');
     try {
-      const result = await api<{ id: string }>(
-        pool ? `/api/manage/pools/${pool.id}/name` : '/api/manage/pools',
-        { name: name.trim() },
-      );
+      const json = { name: name.trim() };
+      const result = pool
+        ? await api(rpc.api.manage.pools[':id'].name.$post({ param: { id: pool.id }, json }))
+        : await api(rpc.api.manage.pools.$post({ json }));
       onSaved(result.id, name.trim());
     } catch (e) {
       setError((e as Error).message);
@@ -197,16 +201,16 @@ export function Manager({
   const [renaming, setRenaming] = useState(false);
   const [revision, setRevision] = useState(0);
   const [page, setPage] = useState(1);
-  const [filter, setFilter] = useState('all');
-  const [codes, setCodes] = useState<{ items: CodeRow[]; total: number } | null>(null);
+  const [filter, setFilter] = useState<CodeFilter>('all');
+  const [codes, setCodes] = useState<CodePage | null>(null);
   const [codesError, setCodesError] = useState('');
   const pool = pools?.find((p) => p.id === poolId);
   const loadedPoolId = pool?.id;
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
-      api<Session>('/api/manage/session', undefined, controller.signal),
-      api<{ items: Pool[] }>('/api/manage/pools', undefined, controller.signal),
+      api(rpc.api.manage.session.$get(undefined, { init: { signal: controller.signal } })),
+      api(rpc.api.manage.pools.$get(undefined, { init: { signal: controller.signal } })),
     ])
       .then(([s, result]) => {
         if (controller.signal.aborted) return;
@@ -222,10 +226,11 @@ export function Manager({
   useEffect(() => {
     if (!loadedPoolId) return;
     const controller = new AbortController();
-    api<{ items: CodeRow[]; total: number }>(
-      `/api/manage/pools/${loadedPoolId}/codes?page=${page}&status=${filter}`,
-      undefined,
-      controller.signal,
+    api(
+      rpc.api.manage.pools[':id'].codes.$get(
+        { param: { id: loadedPoolId }, query: { page: String(page), status: filter } },
+        { init: { signal: controller.signal } },
+      ),
     )
       .then((result) => {
         if (controller.signal.aborted) return;
@@ -248,9 +253,12 @@ export function Manager({
     setBusy(true);
     setError('');
     try {
-      await api(`/api/manage/pools/${pool.id}/status`, {
-        status: pool.status === 'active' ? 'stopped' : 'active',
-      });
+      await api(
+        rpc.api.manage.pools[':id'].status.$post({
+          param: { id: pool.id },
+          json: { status: pool.status === 'active' ? 'stopped' : 'active' },
+        }),
+      );
       refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -262,7 +270,7 @@ export function Manager({
     if (busy) return;
     setBusy(true);
     try {
-      await api('/api/manage/logout', {});
+      await api(rpc.api.manage.logout.$post());
       onLogout();
     } catch (e) {
       setError((e as Error).message);
@@ -461,11 +469,13 @@ export function Manager({
             )}
             <div className="table-toolbar">
               <div className="tabs">
-                {[
-                  ['all', '全部'],
-                  ['unclaimed', '未领取'],
-                  ['claimed', '已领取'],
-                ].map(([value, label]) => (
+                {(
+                  [
+                    ['all', '全部'],
+                    ['unclaimed', '未领取'],
+                    ['claimed', '已领取'],
+                  ] as const
+                ).map(([value, label]) => (
                   <button
                     key={value}
                     className={filter === value ? 'active' : ''}
@@ -547,11 +557,11 @@ export function Manager({
                   上一页
                 </button>
                 <span>
-                  {page} / {Math.max(1, Math.ceil((codes?.total ?? 0) / 50))}
+                  {page} / {codes ? Math.max(1, Math.ceil(codes.total / codes.pageSize)) : '—'}
                 </span>
                 <button
                   className="button secondary small"
-                  disabled={!codes || page * 50 >= codes.total}
+                  disabled={!codes || page * codes.pageSize >= codes.total}
                   onClick={() => {
                     setPage((p) => p + 1);
                     setCodes(null);

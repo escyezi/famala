@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import type { Session } from '../../shared/contracts.ts';
+import type { Session } from '../../shared/api-types.ts';
 import { Icon } from './ui.tsx';
 
 export function WorkspaceMenu({
