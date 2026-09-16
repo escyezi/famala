@@ -2,6 +2,29 @@ import { act, waitFor } from '@testing-library/react';
 import { expect, vi } from 'vitest';
 import type { ClaimRecord } from '../../src/shared/contracts.ts';
 import type { Pool, Session } from '../../src/shared/api-types.ts';
+import type { InferResponseType } from 'hono/client';
+import type { rpc } from '../../src/react-app/api.ts';
+
+// Successful fixtures follow the actual route/status; malformed-response tests
+// deliberately keep using the unconstrained json() helper below.
+type Api = typeof rpc.api;
+type PoolApi = Api['manage']['pools'][':id'];
+export type ApiResponses = {
+  session: InferResponseType<Api['manage']['session']['$get'], 200>;
+  login: InferResponseType<Api['login']['$post'], 200>;
+  createSpace: InferResponseType<Api['spaces']['$post'], 201>;
+  logout: InferResponseType<Api['manage']['logout']['$post'], 200>;
+  pools: InferResponseType<Api['manage']['pools']['$get'], 200>;
+  createPool: InferResponseType<Api['manage']['pools']['$post'], 201>;
+  renamePool: InferResponseType<PoolApi['name']['$post'], 200>;
+  poolStatus: InferResponseType<PoolApi['status']['$post'], 200>;
+  importCodes: InferResponseType<PoolApi['import']['$post'], 200>;
+  codes: InferResponseType<PoolApi['codes']['$get'], 200>;
+  validateClaim: InferResponseType<Api['claim']['validate']['$post'], 200>;
+  config: InferResponseType<Api['config']['$get'], 200>;
+  claim: InferResponseType<Api['claim']['$post'], 200>;
+  markUsed: InferResponseType<Api['claim']['used']['$post'], 200>;
+};
 
 type Handler = (init: RequestInit) => Response | Promise<Response>;
 export const unexpectedRequests: string[] = [];
@@ -34,14 +57,14 @@ export function deferred<T>() {
   return { promise, resolve };
 }
 
-export const claimRecord: ClaimRecord = {
+export const claimRecord = {
   claimKey: `c_${'a'.repeat(43)}`,
   poolName: '九月福利',
   code: 'WELCOME-001',
   claimedAt: 1_800_000_000_000,
   userMarkedUsed: false,
   userMarkedUsedAt: null,
-};
+} satisfies ClaimRecord & ApiResponses['claim'];
 
 export const pool: Pool = {
   id: 'pool-1',
@@ -54,7 +77,10 @@ export const pool: Pool = {
   remaining: 2,
 };
 
-export const session: Session = { spaceId: 'space-12345678', expiresAt: 1_900_000_000_000 };
+export const session = {
+  spaceId: '12345678-1234-4000-8000-123456789abc',
+  expiresAt: 1_900_000_000_000,
+} satisfies Session & Pick<ApiResponses['createSpace'], 'spaceId' | 'expiresAt'>;
 
 // Exercise our real Turnstile component without loading Cloudflare's remote script.
 export function mockTurnstile() {

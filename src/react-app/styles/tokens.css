@@ -1,0 +1,17 @@
+:root {
+  --color-text: #25352f;
+  --color-page: #f8faf8;
+  --color-surface: #fff;
+  --color-primary: #28674b;
+  --color-primary-hover: #1b5139;
+  --color-muted: #6b7c70;
+  --color-help: #75866d;
+  --color-focus: #82bc9e;
+  --color-workspace-muted: #718268;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+}

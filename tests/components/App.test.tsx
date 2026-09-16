@@ -1,3 +1,4 @@
+import type { ApiResponses } from './helpers.ts';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
@@ -20,8 +21,9 @@ test('游客打开首页不会因会话 401 弹出登录框，校验领码 Key �
   const sessionResponse = deferred<Response>();
   mockApi({
     'GET /api/manage/session': () => sessionResponse.promise,
-    'POST /api/claim/validate': () => json(pool),
-    'GET /api/config': () => json({ turnstileSiteKey: 'test-key', testMode: true }),
+    'POST /api/claim/validate': () => json(pool satisfies ApiResponses['validateClaim']),
+    'GET /api/config': () =>
+      json({ turnstileSiteKey: 'test-key', testMode: true } satisfies ApiResponses['config']),
   });
   const user = userEvent.setup();
   render(<App />);
@@ -60,11 +62,11 @@ test('登录后展示管理入口，通过空间菜单退出后回到首页', as
   mockApi({
     'GET /api/manage/session': readSession,
     'POST /api/login': () => {
-      return json(session);
+      return json(session satisfies ApiResponses['login']);
     },
-    'GET /api/manage/pools': () => json({ items: [] }),
+    'GET /api/manage/pools': () => json({ items: [] } satisfies ApiResponses['pools']),
     'POST /api/manage/logout': () => {
-      return json({ ok: true });
+      return json({ ok: true } satisfies ApiResponses['logout']);
     },
   });
   const user = userEvent.setup();
@@ -98,18 +100,23 @@ test('前进后退和切换码池重置详情状态，已离开的请求返回 4
   const second = { ...pool, id: 'pool-2', name: '十月福利', claimKey: 'c_second' };
   const oldCodes = deferred<Response>();
   let oldSignal: AbortSignal | null | undefined;
-  const readSession = vi.fn(() => json(session));
+  const readSession = vi.fn(() => json(session satisfies ApiResponses['session']));
   mockApi({
     'GET /api/manage/session': readSession,
-    'GET /api/manage/pools': () => json({ items: [pool, second] }),
+    'GET /api/manage/pools': () => json({ items: [pool, second] } satisfies ApiResponses['pools']),
     'GET /api/manage/pools/pool-1/codes?page=1&status=all': () =>
-      json({ items: [row], total: 1, page: 1, pageSize: 50 }),
+      json({ items: [row], total: 1, page: 1, pageSize: 50 } satisfies ApiResponses['codes']),
     'GET /api/manage/pools/pool-1/codes?page=1&status=claimed': (init) => {
       oldSignal = init.signal;
       return oldCodes.promise;
     },
     'GET /api/manage/pools/pool-2/codes?page=1&status=all': () =>
-      json({ items: [{ ...row, code: 'POOL-TWO' }], total: 1, page: 1, pageSize: 50 }),
+      json({
+        items: [{ ...row, code: 'POOL-TWO' }],
+        total: 1,
+        page: 1,
+        pageSize: 50,
+      } satisfies ApiResponses['codes']),
   });
   const user = userEvent.setup();
   render(<App />);
@@ -140,19 +147,26 @@ test('会话过期清除旧空间详情，重新登录保留目标路由且忽�
   let expired = false;
   let loggedInAgain = false;
   mockApi({
-    'GET /api/manage/session': () => json(session),
+    'GET /api/manage/session': () => json(session satisfies ApiResponses['session']),
     'GET /api/manage/pools': () =>
       expired
         ? json({ error: '登录已过期' }, 401)
-        : json({ items: [{ ...pool, name: loggedInAgain ? '重新登录的码池' : pool.name }] }),
+        : json({
+            items: [{ ...pool, name: loggedInAgain ? '重新登录的码池' : pool.name }],
+          } satisfies ApiResponses['pools']),
     'GET /api/manage/pools/pool-1/codes?page=1&status=all': () =>
       loggedInAgain
-        ? json({ items: [{ ...row, code: 'NEW-SESSION' }], total: 1, page: 1, pageSize: 50 })
+        ? json({
+            items: [{ ...row, code: 'NEW-SESSION' }],
+            total: 1,
+            page: 1,
+            pageSize: 50,
+          } satisfies ApiResponses['codes'])
         : oldCodes.promise,
     'POST /api/login': () => {
       expired = false;
       loggedInAgain = true;
-      return json(session);
+      return json(session satisfies ApiResponses['login']);
     },
   });
   const user = userEvent.setup();
@@ -167,7 +181,11 @@ test('会话过期清除旧空间详情，重新登录保留目标路由且忽�
   await user.type(screen.getByLabelText('发码 Key'), 'd_saved-key');
   await user.click(screen.getByRole('button', { name: '进入管理页面' }));
   await screen.findByText('NEW-SESSION');
-  await act(async () => oldCodes.resolve(json({ items: [row], total: 1, page: 1, pageSize: 50 })));
+  await act(async () =>
+    oldCodes.resolve(
+      json({ items: [row], total: 1, page: 1, pageSize: 50 } satisfies ApiResponses['codes']),
+    ),
+  );
   expect(location.pathname).toBe(`/manage/pools/${pool.id}`);
   expect(screen.getByRole('heading', { name: '重新登录的码池' })).toBeVisible();
   expect(screen.queryByText('POOL-ONE')).not.toBeInTheDocument();
@@ -181,7 +199,7 @@ test('管理页会话查询失败可重试，连接故障不误判为需要登�
     .fn()
     .mockImplementationOnce(() => json({ error: '暂时不可用' }, 503))
     .mockImplementationOnce(() => retriedSession.promise);
-  const pools = vi.fn(() => json({ items: [] }));
+  const pools = vi.fn(() => json({ items: [] } satisfies ApiResponses['pools']));
   mockApi({ 'GET /api/manage/session': readSession, 'GET /api/manage/pools': pools });
   const user = userEvent.setup();
   render(<App />);
@@ -192,7 +210,7 @@ test('管理页会话查询失败可重试，连接故障不误判为需要登�
   expect(screen.getByText('正在连接发码空间…')).toBeVisible();
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  await act(async () => retriedSession.resolve(json(session)));
+  await act(async () => retriedSession.resolve(json(session satisfies ApiResponses['session'])));
   await screen.findByText('从第一个码池开始');
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });

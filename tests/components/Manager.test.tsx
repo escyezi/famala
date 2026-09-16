@@ -1,3 +1,4 @@
+import type { ApiResponses } from './helpers.ts';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
@@ -5,9 +6,9 @@ import { Manager } from '../../src/react-app/components/Manager.tsx';
 import { json, mockApi, pool } from './helpers.ts';
 
 const baseRoutes = {
-  'GET /api/manage/pools': () => json({ items: [pool] }),
+  'GET /api/manage/pools': () => json({ items: [pool] } satisfies ApiResponses['pools']),
   'GET /api/manage/pools/pool-1/codes?page=1&status=all': () =>
-    json({ items: [], total: 0, page: 1, pageSize: 50 }),
+    json({ items: [], total: 0, page: 1, pageSize: 50 } satisfies ApiResponses['codes']),
 };
 
 function renderManager(poolId?: string) {
@@ -17,7 +18,7 @@ function renderManager(poolId?: string) {
 }
 
 test('创建码池去掉名称首尾空白，成功后导航至新码池', async () => {
-  const create = vi.fn(() => json({ id: 'new-pool' }));
+  const create = vi.fn(() => json({ id: 'new-pool' } satisfies ApiResponses['createPool'], 201));
   mockApi({ ...baseRoutes, 'POST /api/manage/pools': create });
   const user = userEvent.setup();
   const { onNavigate } = renderManager();
@@ -41,11 +42,12 @@ test('修改名称遇到重名时保持弹窗，修正后更新详情标题', as
     const next = JSON.parse(init.body as string).name as string;
     if (next === '重复名称') return json({ error: '码池名称已存在' }, 409);
     name = next;
-    return json({ id: pool.id });
+    return json({ id: pool.id, name } satisfies ApiResponses['renamePool']);
   });
   mockApi({
     ...baseRoutes,
-    'GET /api/manage/pools': () => json({ items: [{ ...pool, name }] }),
+    'GET /api/manage/pools': () =>
+      json({ items: [{ ...pool, name }] } satisfies ApiResponses['pools']),
     'POST /api/manage/pools/pool-1/name': rename,
   });
   const user = userEvent.setup();
@@ -74,12 +76,14 @@ test('批量导入展示原始失败行和成功数量，完成后防止重复�
       succeeded: 1,
       failed: 1,
       failures: [{ line: 2, code: 'CODE-A', reason: '与本批第 1 行重复' }],
-    });
+    } satisfies ApiResponses['importCodes']);
   });
   mockApi({
     ...baseRoutes,
     'GET /api/manage/pools': () =>
-      json({ items: [{ ...pool, total: imported ? 3 : 2, remaining: imported ? 3 : 2 }] }),
+      json({
+        items: [{ ...pool, total: imported ? 3 : 2, remaining: imported ? 3 : 2 }],
+      } satisfies ApiResponses['pools']),
     'POST /api/manage/pools/pool-1/import': importCodes,
   });
   const user = userEvent.setup();
@@ -119,7 +123,7 @@ test('批量导入超过 500 条时禁止提交', async () => {
 });
 
 test('按接口 pageSize 分页，切换领取筛选时回到第一页并更新明细', async () => {
-  const row = {
+  const row: ApiResponses['codes']['items'][number] = {
     id: 'code-1',
     code: 'FIRST-PAGE',
     claimStatus: 'unclaimed',
@@ -132,16 +136,21 @@ test('按接口 pageSize 分页，切换领取筛选时回到第一页并更新�
   mockApi({
     ...baseRoutes,
     'GET /api/manage/pools/pool-1/codes?page=1&status=all': () =>
-      json({ items: [row], total: 2, page: 1, pageSize: 1 }),
+      json({ items: [row], total: 2, page: 1, pageSize: 1 } satisfies ApiResponses['codes']),
     'GET /api/manage/pools/pool-1/codes?page=2&status=all': () =>
-      json({ items: [{ ...row, code: 'SECOND-PAGE' }], total: 2, page: 2, pageSize: 1 }),
+      json({
+        items: [{ ...row, code: 'SECOND-PAGE' }],
+        total: 2,
+        page: 2,
+        pageSize: 1,
+      } satisfies ApiResponses['codes']),
     'GET /api/manage/pools/pool-1/codes?page=1&status=claimed': () =>
       json({
         items: [{ ...row, code: 'CLAIMED-CODE', claimStatus: 'claimed' }],
         total: 1,
         page: 1,
         pageSize: 50,
-      }),
+      } satisfies ApiResponses['codes']),
   });
   const user = userEvent.setup();
   renderManager(pool.id);
@@ -161,11 +170,12 @@ test('停止和恢复发放后刷新状态，提交正确的目标状态', async
   let status = pool.status;
   const setStatus = vi.fn((init: RequestInit) => {
     status = JSON.parse(init.body as string).status;
-    return json({ status });
+    return json({ status } satisfies ApiResponses['poolStatus']);
   });
   mockApi({
     ...baseRoutes,
-    'GET /api/manage/pools': () => json({ items: [{ ...pool, status }] }),
+    'GET /api/manage/pools': () =>
+      json({ items: [{ ...pool, status }] } satisfies ApiResponses['pools']),
     'POST /api/manage/pools/pool-1/status': setStatus,
   });
   const user = userEvent.setup();

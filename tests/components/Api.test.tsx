@@ -1,10 +1,12 @@
+import type { ApiResponses } from './helpers.ts';
 import { expect, test } from 'vitest';
 import { api, ApiError, rpc } from '../../src/react-app/api.ts';
-import { json, mockApi } from './helpers.ts';
+import { json, mockApi, session } from './helpers.ts';
 
 test('请求携带 Cookie、禁用缓存，无请求体的 POST 仍声明 JSON', async () => {
   const fetch = mockApi({
-    'POST /api/spaces': () => json({ key: 'new-key' }, 201),
+    'POST /api/spaces': () =>
+      json({ key: 'new-key', ...session } satisfies ApiResponses['createSpace'], 201),
   });
   await api(rpc.api.spaces.$post());
   expect(fetch.mock.calls[0][1]).toMatchObject({

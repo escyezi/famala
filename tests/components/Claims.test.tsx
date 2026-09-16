@@ -1,3 +1,4 @@
+import type { ApiResponses } from './helpers.ts';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
@@ -6,8 +7,9 @@ import { readRecords, STORAGE_KEY } from '../../src/react-app/storage.ts';
 import { claimRecord, deferred, json, mockApi, mockTurnstile, pool } from './helpers.ts';
 
 const publicRoutes = {
-  'POST /api/claim/validate': () => json(pool),
-  'GET /api/config': () => json({ turnstileSiteKey: 'test-site-key', testMode: true }),
+  'POST /api/claim/validate': () => json(pool satisfies ApiResponses['validateClaim']),
+  'GET /api/config': () =>
+    json({ turnstileSiteKey: 'test-site-key', testMode: true } satisfies ApiResponses['config']),
 };
 
 function renderClaim() {
@@ -37,7 +39,7 @@ test('验证通过后才能领取，重复点击只发出一次请求，结果�
       }),
     }),
   );
-  pending.resolve(json(claimRecord));
+  pending.resolve(json(claimRecord satisfies ApiResponses['claim']));
   expect(await screen.findByText(claimRecord.code)).toBeVisible();
   await waitFor(() => expect(readRecords().records).toEqual([claimRecord]));
   expect(screen.queryByRole('button', { name: '领取兑换码' })).not.toBeInTheDocument();
@@ -89,11 +91,13 @@ test('备注按 Unicode 字符计数，超过 500 字时阻止提交', async () 
 test.each([
   ['stopped', 2, '停止发放'],
   ['active', 0, '兑换码已发放完毕'],
-])('码池状态 %s、库存 %i 时禁止领取，刷新后可恢复', async (status, remaining, label) => {
+] as const)('码池状态 %s、库存 %i 时禁止领取，刷新后可恢复', async (status, remaining, label) => {
   const validate = vi
     .fn()
-    .mockImplementationOnce(() => json({ ...pool, status, remaining }))
-    .mockImplementationOnce(() => json(pool));
+    .mockImplementationOnce(() =>
+      json({ ...pool, status, remaining } satisfies ApiResponses['validateClaim']),
+    )
+    .mockImplementationOnce(() => json(pool satisfies ApiResponses['validateClaim']));
   mockApi({ ...publicRoutes, 'POST /api/claim/validate': validate });
   const turnstile = mockTurnstile();
   const user = userEvent.setup();
@@ -130,7 +134,7 @@ test('网络失败提示发码结果可能丢失，必须重新验证才能重�
   const claim = vi
     .fn()
     .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-    .mockImplementationOnce(() => json(claimRecord));
+    .mockImplementationOnce(() => json(claimRecord satisfies ApiResponses['claim']));
   mockApi({ ...publicRoutes, 'POST /api/claim': claim });
   const turnstile = mockTurnstile();
   const user = userEvent.setup();
@@ -151,7 +155,8 @@ test('网络失败提示发码结果可能丢失，必须重新验证才能重�
 test('未配置人机验证时显示说明并禁止领取', async () => {
   mockApi({
     ...publicRoutes,
-    'GET /api/config': () => json({ turnstileSiteKey: null, testMode: false }),
+    'GET /api/config': () =>
+      json({ turnstileSiteKey: null, testMode: false } satisfies ApiResponses['config']),
   });
   renderClaim();
   expect(await screen.findByRole('alert')).toHaveTextContent('人机验证暂未配置');
@@ -162,7 +167,7 @@ test('加载失败后可以重试，也可以请求重新输入 Key', async () =
   const validate = vi
     .fn()
     .mockImplementationOnce(() => json({ error: '领取信息加载失败' }, 500))
-    .mockImplementationOnce(() => json(pool));
+    .mockImplementationOnce(() => json(pool satisfies ApiResponses['validateClaim']));
   mockApi({ ...publicRoutes, 'POST /api/claim/validate': validate });
   const onEnterKey = vi.fn();
   const user = userEvent.setup();
@@ -175,7 +180,10 @@ test('加载失败后可以重试，也可以请求重新输入 Key', async () =
 });
 
 test('本地保存失败仍展示已领取兑换码，并提示手动保存', async () => {
-  mockApi({ ...publicRoutes, 'POST /api/claim': () => json(claimRecord) });
+  mockApi({
+    ...publicRoutes,
+    'POST /api/claim': () => json(claimRecord satisfies ApiResponses['claim']),
+  });
   const turnstile = mockTurnstile();
   vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
     throw new DOMException('Storage full', 'QuotaExceededError');
@@ -201,7 +209,9 @@ test('标记使用失败不修改记录，重试成功后持久化并禁止重�
   const used = vi
     .fn()
     .mockImplementationOnce(() => json({ error: '标记失败' }, 500))
-    .mockImplementationOnce(() => json({ userMarkedUsed: true, userMarkedUsedAt: usedAt }));
+    .mockImplementationOnce(() =>
+      json({ userMarkedUsed: true, userMarkedUsedAt: usedAt } satisfies ApiResponses['markUsed']),
+    );
   mockApi({ 'POST /api/claim/used': used });
   const user = userEvent.setup();
   const view = render(<HistoryDialog onClose={vi.fn()} />);

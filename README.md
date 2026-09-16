@@ -68,6 +68,8 @@ npm run check
 
 `helpers.ts` 的 `mockApi` 按 `方法 + 路径` 显式定义网络响应；组件仍调用真实的 Hono RPC 客户端和 `api()`，未声明的请求会使测试失败。通过 `deferred<Response>()` 控制请求完成时机，可以检查等待状态和防重复提交。Turnstile 仅模拟第三方 SDK，通过 `mockTurnstile().trigger('callback', 'token')` 或 `trigger('expired-callback')` 驱动真实验证组件。
 
+成功响应使用 `satisfies ApiResponses['renamePool']` 等约束；`ApiResponses` 直接从 Hono 路由及成功状态码推导，避免 mock 遗漏字段或使用错误类型。`json()` 保留 `unknown` 入参，以便错误及畸形响应测试刻意构造非法数据。
+
 `setup.ts` 为每个用例清理 DOM、本地存储、路由和 mock，并补齐必要的浏览器 API。Web Locks 模拟只用于单页面保存，不代表真实跨标签并发验证。jsdom 不验证 CSS 布局、原生弹窗焦点管理、浏览器兼容性或真实 Turnstile 服务；这些仍需浏览器检查。测试 TypeScript 类型也纳入了 `npm run build`。
 
 `npm run check` 依次执行格式检查、代码检查、测试、构建和 `wrangler deploy --dry-run`，不会发布。
@@ -78,6 +80,16 @@ npm run check
 - 路由只记录路径和查询参数，前进后退同步路由并关闭弹窗。管理页按空间 ID 隔离，码池详情按码池 ID 隔离，领码页按领码 Key 隔离；切换身份或资源时重置对应状态，不再用导航版本号强制重建整页。
 - `Manager` 负责选择列表或详情；`PoolList` 管理新建入口，`PoolDetail` 管理分享、明细和详情弹窗，`PoolDialogs` 管理创建、改名和导入表单。`usePools` 负责码池列表请求，`usePoolDetails` 负责明细请求、筛选、分页和操作后的刷新。
 - 查询在页面离开或请求替换时取消；已取消请求的结果和 401 通知均被忽略，避免旧请求覆盖新页面或重新打开登录框。导航和会话竞态由 App 组件测试覆盖。
+
+## 前端样式
+
+`index.css` 保留基础元素和表单规则；`App.css` 只作为样式入口，按顺序引入 `styles/` 下的文件：
+
+- `tokens.css`：共用颜色和间距变量。
+- `common.css`：页头页脚、按钮、弹窗、提示、空状态和表格等公共样式。表格规则限定在 `.table-scroll` 内。
+- `home.css`、`manager.css`、`claims.css`：首页、发码管理和领码/历史记录样式，各自维护对应的响应式规则。
+
+调整现有样式时直接修改所属文件中的规则，避免在入口末尾追加同名覆盖。常用颜色和间距优先复用变量，页面特有的尺寸保留在页面文件中。
 
 ## API 类型链路
 
