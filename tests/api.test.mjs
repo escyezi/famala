@@ -427,6 +427,20 @@ test('empty pools and partial import: names, original line numbers, Unicode, dup
   const codes = await request(`/api/manage/pools/${p.id}/codes?page=1`, undefined, owner.cookie);
   assert.equal(codes.body.items.length, 50);
   assert.equal(codes.body.total, 504);
+  const smaller = await request(
+    `/api/manage/pools/${p.id}/codes?page=2&pageSize=20`,
+    undefined,
+    owner.cookie,
+  );
+  assert.equal(smaller.body.pageSize, 20);
+  assert.equal(smaller.body.total, 504);
+  assert.deepEqual(smaller.body.items, codes.body.items.slice(20, 40));
+  const smallerLast = await request(
+    `/api/manage/pools/${p.id}/codes?page=26&pageSize=20`,
+    undefined,
+    owner.cookie,
+  );
+  assert.equal(smallerLast.body.items.length, 4);
   const last = await request(`/api/manage/pools/${p.id}/codes?page=11`, undefined, owner.cookie);
   assert.equal(last.body.items.length, 4);
   const validation = await request('/api/claim/validate', { claimKey: p.claimKey });
@@ -655,7 +669,10 @@ test('Hono RPC client interoperates with actual routes, JSON validators and quer
   const pool = authenticated.api.manage.pools[':id'];
   const imported = await pool.import.$post({ param, json: { text: 'RPC-1\nRPC-2' } });
   assert.equal((await imported.json()).succeeded, 2);
-  const codes = await pool.codes.$get({ param, query: { page: '1', status: 'unclaimed' } });
+  const codes = await pool.codes.$get({
+    param,
+    query: { page: '1', status: 'unclaimed', pageSize: '50' },
+  });
   const page = await codes.json();
   assert.equal(page.page, 1);
   assert.equal(page.pageSize, 50);
@@ -680,6 +697,10 @@ test('RPC validators reject untyped callers with invalid body and query fields',
     'page=0',
     'page=1.5',
     'page=1&page=2',
+    'pageSize=0',
+    'pageSize=100',
+    'pageSize=abc',
+    'pageSize=20&pageSize=50',
     'status=used',
     'status=all&status=claimed',
   ])

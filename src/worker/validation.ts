@@ -84,8 +84,8 @@ export const codesQuery: MiddlewareHandler<
   AppEnv,
   string,
   {
-    in: { query: { page?: string; status?: CodeFilter } };
-    out: { query: { page: number; status: CodeFilter } };
+    in: { query: { page?: string; status?: CodeFilter; pageSize?: '20' | '50' } };
+    out: { query: { page: number; status: CodeFilter; pageSize: number } };
   }
 > = async (c, next) => {
   const query = c.req.queries();
@@ -103,6 +103,9 @@ export const codesQuery: MiddlewareHandler<
     (status !== 'all' && status !== 'claimed' && status !== 'unclaimed')
   )
     throw new HTTPException(400, { message: '无效的领取状态' });
-  c.req.addValidatedData('query', { page, status });
+  const size = query.pageSize?.[0] ?? '50';
+  if ((query.pageSize && query.pageSize.length !== 1) || (size !== '20' && size !== '50'))
+    throw new HTTPException(400, { message: '每页条数仅支持 20 或 50' });
+  c.req.addValidatedData('query', { page, status, pageSize: Number(size) });
   await next();
 };

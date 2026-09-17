@@ -52,6 +52,8 @@ export async function apiTypeChecks() {
   rpc.api.manage.pools[':id'].codes.$get({ param: { id: 'pool' }, query: { status: 'used' } });
   // @ts-expect-error Query parameters travel as strings.
   rpc.api.manage.pools[':id'].codes.$get({ param: { id: 'pool' }, query: { page: 2 } });
+  // @ts-expect-error Page size must be one of the supported choices.
+  rpc.api.manage.pools[':id'].codes.$get({ param: { id: 'pool' }, query: { pageSize: '100' } });
   // @ts-expect-error Required verification token.
   rpc.api.claim.$post({ json: { claimKey: 'key' } });
   // @ts-expect-error Successful payload has no invented field.

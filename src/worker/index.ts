@@ -265,7 +265,7 @@ const routes = app
   })
   .get('/api/manage/pools/:id/codes', codesQuery, async (c) => {
     const pool = await ownedPool(c);
-    const { page, status: filter } = c.req.valid('query');
+    const { page, status: filter, pageSize } = c.req.valid('query');
     const where = and(
       eq(redemptionCodes.poolId, pool.id),
       filter === 'claimed' || filter === 'unclaimed'
@@ -288,11 +288,11 @@ const routes = app
         .from(redemptionCodes)
         .where(where)
         .orderBy(desc(redemptionCodes.createdAt), desc(redemptionCodes.id))
-        .limit(50)
-        .offset((page - 1) * 50),
+        .limit(pageSize)
+        .offset((page - 1) * pageSize),
       db.select({ total: count() }).from(redemptionCodes).where(where),
     ]);
-    return c.json({ items, total: totals[0].total, page, pageSize: 50 }, 200);
+    return c.json({ items, total: totals[0].total, page, pageSize }, 200);
   })
   .post('/api/claim/validate', claimKeyInput, async (c) => {
     const data = c.req.valid('json');

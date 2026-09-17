@@ -117,18 +117,18 @@ test('前进后退和切换码池重置详情状态，已离开的请求返回 4
   mockApi({
     'GET /api/manage/session': readSession,
     'GET /api/manage/pools': () => json({ items: [pool, second] } satisfies ApiResponses['pools']),
-    'GET /api/manage/pools/1/codes?page=1&status=all': () =>
-      json({ items: [row], total: 1, page: 1, pageSize: 50 } satisfies ApiResponses['codes']),
-    'GET /api/manage/pools/1/codes?page=1&status=claimed': (init) => {
+    'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () =>
+      json({ items: [row], total: 1, page: 1, pageSize: 20 } satisfies ApiResponses['codes']),
+    'GET /api/manage/pools/1/codes?page=1&status=claimed&pageSize=20': (init) => {
       oldSignal = init.signal;
       return oldCodes.promise;
     },
-    'GET /api/manage/pools/2/codes?page=1&status=all': () =>
+    'GET /api/manage/pools/2/codes?page=1&status=all&pageSize=20': () =>
       json({
         items: [{ ...row, code: 'POOL-TWO' }],
         total: 1,
         page: 1,
-        pageSize: 50,
+        pageSize: 20,
       } satisfies ApiResponses['codes']),
   });
   const user = userEvent.setup();
@@ -136,6 +136,7 @@ test('前进后退和切换码池重置详情状态，已离开的请求返回 4
   await user.click(await screen.findByRole('link', { name: new RegExp(pool.name) }));
   await screen.findByText('POOL-ONE');
   await user.click(screen.getByRole('button', { name: '已领取' }));
+  await user.click(await screen.findByRole('button', { name: '更多' }));
   await user.click(screen.getByRole('button', { name: '修改名称' }));
   act(() => history.back());
   await screen.findByRole('heading', { name: '我的空间', level: 1 });
@@ -167,13 +168,13 @@ test('会话过期清除旧空间详情，重新登录保留目标路由且忽�
         : json({
             items: [{ ...pool, name: loggedInAgain ? '重新登录的码池' : pool.name }],
           } satisfies ApiResponses['pools']),
-    'GET /api/manage/pools/1/codes?page=1&status=all': () =>
+    'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () =>
       loggedInAgain
         ? json({
             items: [{ ...row, code: 'NEW-SESSION' }],
             total: 1,
             page: 1,
-            pageSize: 50,
+            pageSize: 20,
           } satisfies ApiResponses['codes'])
         : oldCodes.promise,
     'POST /api/login': () => {
@@ -196,7 +197,7 @@ test('会话过期清除旧空间详情，重新登录保留目标路由且忽�
   await screen.findByText('NEW-SESSION');
   await act(async () =>
     oldCodes.resolve(
-      json({ items: [row], total: 1, page: 1, pageSize: 50 } satisfies ApiResponses['codes']),
+      json({ items: [row], total: 1, page: 1, pageSize: 20 } satisfies ApiResponses['codes']),
     ),
   );
   expect(location.pathname).toBe(`/manage/pools/${pool.id}`);
@@ -235,8 +236,8 @@ test('删除后返回空间并立即移除旧卡片，后退不能重新打开�
     'GET /api/manage/session': () => json(session satisfies ApiResponses['session']),
     'GET /api/manage/pools': () =>
       deleted ? refreshed.promise : json({ items: [pool] } satisfies ApiResponses['pools']),
-    'GET /api/manage/pools/1/codes?page=1&status=all': () =>
-      json({ items: [row], total: 1, page: 1, pageSize: 50 } satisfies ApiResponses['codes']),
+    'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () =>
+      json({ items: [row], total: 1, page: 1, pageSize: 20 } satisfies ApiResponses['codes']),
     'DELETE /api/manage/pools/1': () => {
       deleted = true;
       return json({ ok: true } satisfies ApiResponses['deletePool']);
@@ -246,6 +247,7 @@ test('删除后返回空间并立即移除旧卡片，后退不能重新打开�
   render(<App />);
   await user.click(await screen.findByRole('button', { name: /发码管理/ }));
   await user.click(await screen.findByRole('link', { name: new RegExp(pool.name) }));
+  await user.click(await screen.findByRole('button', { name: '更多' }));
   await user.click(await screen.findByRole('button', { name: '删除码池' }));
   await user.click(screen.getByRole('button', { name: '确认删除' }));
   expect(await screen.findByRole('heading', { name: '我的空间' })).toBeVisible();

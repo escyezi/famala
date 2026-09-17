@@ -14,6 +14,7 @@ export function Icon({
     | 'grid'
     | 'key'
     | 'history'
+    | 'refresh'
     | 'logout'
     | 'close'
     | 'box';
@@ -45,14 +46,17 @@ export function Icon({
     ),
     key: (
       <>
-        <circle cx="8" cy="9" r="5" />
-        <path d="m12 13 8 8m-4-4 3-3m-6 0 3-3" />
+        <path d="M13.5 10.4A6 6 0 1 0 10.4 13.5L14 17v3h3v2h4v-4l-7.5-7.6Z" />
+        <circle cx="7" cy="7" r="1.5" />
       </>
     ),
     history: (
       <>
         <path d="M3 10a9 9 0 1 1 2 8M3 4v6h6M12 7v5l3 2" />
       </>
+    ),
+    refresh: (
+      <path d="M20 11a8 8 0 0 0-13.66-4.66L4 9m0-5v5h5M4 13a8 8 0 0 0 13.66 4.66L20 15m0 5v-5h-5" />
     ),
     logout: <path d="M9 3H4v18h5m-1-9h13m-5-5 5 5-5 5" />,
     close: <path d="m6 6 12 12M6 18 18 6" />,

@@ -1,20 +1,25 @@
 import { useEffect, useState } from 'react';
-import type { CodeFilter, CodePage, Pool } from '../../shared/api-types.ts';
+import type { CodeFilter, CodePage, CodePageSize, Pool } from '../../shared/api-types.ts';
 import { api, rpc } from '../api.ts';
 
 export function usePoolDetails(pool: Pool, onRefresh: () => void) {
-  const [query, setQuery] = useState({ page: 1, filter: 'all' as CodeFilter, revision: 0 });
+  const [query, setQuery] = useState({
+    page: 1,
+    filter: 'all' as CodeFilter,
+    pageSize: '20' as CodePageSize,
+    revision: 0,
+  });
   const [codes, setCodes] = useState<CodePage | null>(null);
   const [codesError, setCodesError] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const { page, filter, revision } = query;
+  const { page, filter, pageSize, revision } = query;
 
   useEffect(() => {
     const controller = new AbortController();
     api(
       rpc.api.manage.pools[':id'].codes.$get(
-        { param: { id: String(pool.id) }, query: { page: String(page), status: filter } },
+        { param: { id: String(pool.id) }, query: { page: String(page), status: filter, pageSize } },
         { init: { signal: controller.signal } },
       ),
     )
@@ -27,9 +32,9 @@ export function usePoolDetails(pool: Pool, onRefresh: () => void) {
         if (!controller.signal.aborted) setCodesError(error.message);
       });
     return () => controller.abort();
-  }, [pool.id, page, filter, revision]);
+  }, [pool.id, page, filter, pageSize, revision]);
 
-  function updateQuery(next: Partial<Pick<typeof query, 'page' | 'filter'>> = {}) {
+  function updateQuery(next: Partial<Pick<typeof query, 'page' | 'filter' | 'pageSize'>> = {}) {
     setCodes(null);
     setCodesError('');
     setQuery((current) => ({ ...current, ...next, revision: current.revision + 1 }));
@@ -67,6 +72,7 @@ export function usePoolDetails(pool: Pool, onRefresh: () => void) {
     codes,
     codesError,
     page,
+    pageSize,
     filter,
     busy,
     error,
@@ -75,5 +81,6 @@ export function usePoolDetails(pool: Pool, onRefresh: () => void) {
     status,
     changePage: (page: number) => updateQuery({ page }),
     changeFilter: (filter: CodeFilter) => updateQuery({ filter, page: 1 }),
+    changePageSize: (pageSize: CodePageSize) => updateQuery({ pageSize, page: 1 }),
   };
 }

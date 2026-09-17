@@ -7,8 +7,8 @@ import { deferred, json, mockApi, pool } from './helpers.ts';
 
 const baseRoutes = {
   'GET /api/manage/pools': () => json({ items: [pool] } satisfies ApiResponses['pools']),
-  'GET /api/manage/pools/1/codes?page=1&status=all': () =>
-    json({ items: [], total: 0, page: 1, pageSize: 50 } satisfies ApiResponses['codes']),
+  'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () =>
+    json({ items: [], total: 0, page: 1, pageSize: 20 } satisfies ApiResponses['codes']),
 };
 
 function renderManager(poolId?: string) {
@@ -52,6 +52,15 @@ test('修改名称遇到重名时保持弹窗，修正后更新详情标题', as
   });
   const user = userEvent.setup();
   renderManager(String(pool.id));
+  const more = await screen.findByRole('button', { name: '更多' });
+  expect(screen.queryByRole('button', { name: '修改名称' })).not.toBeInTheDocument();
+  await user.click(more);
+  expect(more).toHaveAttribute('aria-expanded', 'true');
+  await user.keyboard('{Escape}');
+  expect(more).toHaveAttribute('aria-expanded', 'false');
+  expect(more).toHaveFocus();
+  expect(screen.queryByRole('button', { name: '修改名称' })).not.toBeInTheDocument();
+  await user.click(await screen.findByRole('button', { name: '更多' }));
   await user.click(await screen.findByRole('button', { name: '修改名称' }));
   const submit = screen.getByRole('button', { name: '保存名称' });
   const input = screen.getByLabelText('码池名称');
@@ -65,7 +74,13 @@ test('修改名称遇到重名时保持弹窗，修正后更新详情标题', as
   await user.click(submit);
   expect(await screen.findByRole('heading', { name: '新的活动', level: 1 })).toBeVisible();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  const keyToggle = screen.getByRole('button', { name: '查看领码 Key' });
+  expect(keyToggle).toHaveAttribute('aria-expanded', 'false');
+  await user.click(keyToggle);
+  expect(keyToggle).toHaveAttribute('aria-expanded', 'true');
   expect(screen.getByText(pool.claimKey)).toBeVisible();
+  await user.click(keyToggle);
+  expect(screen.getByText(pool.claimKey)).not.toBeVisible();
 });
 
 test('批量导入展示原始失败行和成功数量，完成后防止重复导入并刷新统计', async () => {
@@ -101,7 +116,11 @@ test('批量导入展示原始失败行和成功数量，完成后防止重复�
   expect(within(dialog).getByText('第 2 行')).toBeVisible();
   expect(within(dialog).getByText('与本批第 1 行重复')).toBeVisible();
   expect(submit).toBeDisabled();
-  expect(await screen.findByText('0 / 3')).toBeVisible();
+  await waitFor(() =>
+    expect(
+      within(screen.getByRole('region', { name: '码池统计' })).getByText('总数').parentElement,
+    ).toHaveTextContent('总数3'),
+  );
   expect(importCodes).toHaveBeenCalledWith(
     expect.objectContaining({ body: JSON.stringify({ text: 'CODE-A\nCODE-A' }) }),
   );
@@ -122,7 +141,7 @@ test('批量导入超过 500 条时禁止提交', async () => {
   expect(screen.getByRole('button', { name: '开始导入' })).toBeDisabled();
 });
 
-test('按接口 pageSize 分页，切换领取筛选时回到第一页并更新明细', async () => {
+test('按每页条数翻页，切换条数或领取筛选回到第一页', async () => {
   const row: ApiResponses['codes']['items'][number] = {
     id: 1,
     code: 'FIRST-PAGE',
@@ -135,16 +154,34 @@ test('按接口 pageSize 分页，切换领取筛选时回到第一页并更新�
   };
   mockApi({
     ...baseRoutes,
-    'GET /api/manage/pools/1/codes?page=1&status=all': () =>
-      json({ items: [row], total: 2, page: 1, pageSize: 1 } satisfies ApiResponses['codes']),
-    'GET /api/manage/pools/1/codes?page=2&status=all': () =>
+    'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () =>
+      json({ items: [row], total: 51, page: 1, pageSize: 20 } satisfies ApiResponses['codes']),
+    'GET /api/manage/pools/1/codes?page=2&status=all&pageSize=20': () =>
       json({
         items: [{ ...row, code: 'SECOND-PAGE' }],
-        total: 2,
+        total: 51,
         page: 2,
-        pageSize: 1,
+        pageSize: 20,
       } satisfies ApiResponses['codes']),
-    'GET /api/manage/pools/1/codes?page=1&status=claimed': () =>
+    'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=50': () =>
+      json({
+        items: Array.from({ length: 50 }, (_, i) => ({
+          ...row,
+          id: i + 1,
+          code: `LARGE-PAGE-${i}`,
+        })),
+        total: 51,
+        page: 1,
+        pageSize: 50,
+      } satisfies ApiResponses['codes']),
+    'GET /api/manage/pools/1/codes?page=2&status=all&pageSize=50': () =>
+      json({
+        items: [{ ...row, code: 'LAST-PAGE' }],
+        total: 51,
+        page: 2,
+        pageSize: 50,
+      } satisfies ApiResponses['codes']),
+    'GET /api/manage/pools/1/codes?page=1&status=claimed&pageSize=50': () =>
       json({
         items: [{ ...row, code: 'CLAIMED-CODE', claimStatus: 'claimed' }],
         total: 1,
@@ -155,13 +192,23 @@ test('按接口 pageSize 分页，切换领取筛选时回到第一页并更新�
   const user = userEvent.setup();
   renderManager(String(pool.id));
   await screen.findByText('FIRST-PAGE');
+  expect(screen.getByRole('combobox', { name: '每页条数' })).toHaveValue('20');
   expect(screen.getByRole('button', { name: '上一页' })).toBeDisabled();
   await user.click(screen.getByRole('button', { name: '下一页' }));
   expect(await screen.findByText('SECOND-PAGE')).toBeVisible();
   expect(screen.queryByText('FIRST-PAGE')).not.toBeInTheDocument();
+  await user.selectOptions(screen.getByRole('combobox', { name: '每页条数' }), '50');
+  await screen.findByText('LARGE-PAGE-0');
+  expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(51);
+  expect(screen.queryByText('SECOND-PAGE')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '上一页' })).toBeDisabled();
+  await user.click(screen.getByRole('button', { name: '下一页' }));
+  expect(await screen.findByText('LAST-PAGE')).toBeVisible();
+  expect(screen.getByRole('button', { name: '下一页' })).toBeDisabled();
   await user.click(screen.getByRole('button', { name: '已领取' }));
   expect(await screen.findByText('CLAIMED-CODE')).toBeVisible();
-  expect(screen.queryByText('SECOND-PAGE')).not.toBeInTheDocument();
+  expect(screen.queryByText('LAST-PAGE')).not.toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: '每页条数' })).toHaveValue('50');
   expect(screen.getByRole('button', { name: '上一页' })).toBeDisabled();
   expect(screen.getByRole('button', { name: '下一页' })).toBeDisabled();
 });
@@ -180,11 +227,13 @@ test('停止和恢复发放后刷新状态，提交正确的目标状态', async
   });
   const user = userEvent.setup();
   renderManager(String(pool.id));
+  await user.click(await screen.findByRole('button', { name: '更多' }));
   await user.click(await screen.findByRole('button', { name: '停止发放' }));
   expect(await screen.findByText('已停止')).toBeVisible();
   expect(setStatus).toHaveBeenLastCalledWith(
     expect.objectContaining({ body: JSON.stringify({ status: 'stopped' }) }),
   );
+  await user.click(await screen.findByRole('button', { name: '更多' }));
   await user.click(screen.getByRole('button', { name: '恢复发放' }));
   expect(await screen.findByText('发放中')).toBeVisible();
   expect(setStatus).toHaveBeenLastCalledWith(
@@ -201,6 +250,7 @@ test('删除需确认，取消不发请求；失败可重试，提交中不能�
   const fetch = mockApi({ ...baseRoutes, 'DELETE /api/manage/pools/1': remove });
   const user = userEvent.setup();
   const { onNavigate } = renderManager(String(pool.id));
+  await user.click(await screen.findByRole('button', { name: '更多' }));
   await user.click(await screen.findByRole('button', { name: '删除码池' }));
   let dialog = screen.getByRole('dialog', { name: '删除码池' });
   expect(dialog).toHaveTextContent(pool.name);
@@ -208,6 +258,7 @@ test('删除需确认，取消不发请求；失败可重试，提交中不能�
   await user.click(within(dialog).getByRole('button', { name: '取消' }));
   expect(remove).not.toHaveBeenCalled();
   expect(onNavigate).not.toHaveBeenCalled();
+  await user.click(await screen.findByRole('button', { name: '更多' }));
   await user.click(screen.getByRole('button', { name: '删除码池' }));
   dialog = screen.getByRole('dialog', { name: '删除码池' });
   await user.click(within(dialog).getByRole('button', { name: '确认删除' }));
@@ -232,6 +283,7 @@ test('码池已被其他页面删除时，再次删除也返回列表', async ()
   });
   const user = userEvent.setup();
   const { onNavigate } = renderManager(String(pool.id));
+  await user.click(await screen.findByRole('button', { name: '更多' }));
   await user.click(await screen.findByRole('button', { name: '删除码池' }));
   await user.click(screen.getByRole('button', { name: '确认删除' }));
   await waitFor(() => expect(onNavigate).toHaveBeenCalledExactlyOnceWith('/manage'));

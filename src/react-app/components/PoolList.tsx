@@ -38,8 +38,14 @@ export function PoolList({
         <h2>
           我的码池 <span className="count-badge">{pools?.length ?? 0}</span>
         </h2>
-        <button className="text-button" onClick={onRefresh}>
-          刷新数据
+        <button
+          type="button"
+          className="text-button refresh-button"
+          aria-label="刷新数据"
+          title="刷新数据"
+          onClick={onRefresh}
+        >
+          <Icon name="refresh" size={18} />
         </button>
       </div>
       {!pools ? (

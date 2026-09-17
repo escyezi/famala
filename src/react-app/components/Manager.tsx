@@ -14,7 +14,7 @@ export function Manager({
   const pool = pools?.find((item) => String(item.id) === poolId);
   return (
     <div className="workspace">
-      <main className="manager-main">
+      <main className={`manager-main${pool ? ' manager-detail-main' : ''}`}>
         {!poolId ? (
           <PoolList pools={pools} error={error} onRefresh={refresh} onNavigate={onNavigate} />
         ) : pool ? (
@@ -49,8 +49,14 @@ export function Manager({
                 <h1>码池详情</h1>
                 <p className="muted">查看码池信息、领取明细与分享设置。</p>
               </div>
-              <button className="text-button" onClick={refresh}>
-                刷新数据
+              <button
+                type="button"
+                className="text-button refresh-button"
+                aria-label="刷新数据"
+                title="刷新数据"
+                onClick={refresh}
+              >
+                <Icon name="refresh" size={18} />
               </button>
             </div>
             <Notice>{error}</Notice>
