@@ -95,7 +95,7 @@ async function publicPool(c: Context<AppEnv>, key: string) {
     .where(eq(codePools.claimKey, key))
     .groupBy(codePools.id)
     .get();
-  if (!pool) throw new HTTPException(404, { message: '领码 Key 无效，请检查后重试' });
+  if (!pool) throw new HTTPException(404, { message: '领码 Key 无效或码池已删除' });
   return pool;
 }
 const routes = app
@@ -188,6 +188,20 @@ const routes = app
     if (!pool) return c.json({ error: '当前空间已有同名码池，请更换名称' }, 409);
     return c.json({ id: pool.id }, 201);
   })
+  .delete('/api/manage/pools/:id', async (c) => {
+    const pool = await ownedPool(c);
+    const db = drizzle(c.env.DB);
+    // Foreign keys do not cascade: remove children and parent atomically.
+    const [, deleted] = await db.batch([
+      db.delete(redemptionCodes).where(eq(redemptionCodes.poolId, pool.id)),
+      db
+        .delete(codePools)
+        .where(and(eq(codePools.id, pool.id), eq(codePools.spaceId, c.get('spaceId'))))
+        .returning({ id: codePools.id }),
+    ]);
+    if (!deleted.length) return c.json({ error: '兑换码池不存在或已删除' }, 404);
+    return c.json({ ok: true }, 200);
+  })
   .post('/api/manage/pools/:id/name', poolNameInput, async (c) => {
     const pool = await ownedPool(c);
     const { name } = c.req.valid('json');
@@ -198,16 +212,21 @@ const routes = app
     WHERE id = ${pool.id} AND space_id = ${c.get('spaceId')}
     RETURNING id, name
   `);
-    if (!renamed) return c.json({ error: '当前空间已有同名码池，请更换名称' }, 409);
+    if (!renamed) {
+      await ownedPool(c);
+      return c.json({ error: '当前空间已有同名码池，请更换名称' }, 409);
+    }
     return c.json(renamed, 200);
   })
   .post('/api/manage/pools/:id/status', poolStatusInput, async (c) => {
     const pool = await ownedPool(c);
     const { status } = c.req.valid('json');
-    await drizzle(c.env.DB)
+    const updated = await drizzle(c.env.DB)
       .update(codePools)
       .set({ status })
-      .where(and(eq(codePools.id, pool.id), eq(codePools.spaceId, c.get('spaceId'))));
+      .where(and(eq(codePools.id, pool.id), eq(codePools.spaceId, c.get('spaceId'))))
+      .returning({ id: codePools.id });
+    if (!updated.length) return c.json({ error: '兑换码池不存在或已删除' }, 404);
     return c.json({ status }, 200);
   })
   .post('/api/manage/pools/:id/import', importInput, async (c) => {
@@ -222,13 +241,16 @@ const routes = app
     const { valid, failures } = parsed;
     const now = Date.now();
     let succeeded = 0;
-    // 20 rows × 3 bound values stays below D1's 100-parameter limit. The unique
+    // 20 rows × 2 values + pool/space IDs stays below D1's 100-parameter limit. The unique
     // constraint handles concurrent imports; only duplicate codes are skipped.
     for (let offset = 0; offset < valid.length; offset += 20) {
       const chunk = valid.slice(offset, offset + 20);
-      const tuples = chunk.map((row) => sql`(${pool.id}, ${row.code}, ${now})`);
+      const tuples = chunk.map((row) => sql`(${row.code}, ${now})`);
       const inserted = await drizzle(c.env.DB).all<{ code: string }>(sql`
-      INSERT INTO redemption_codes (pool_id, code, created_at) VALUES ${sql.join(tuples, sql`, `)}
+      WITH incoming(code, created_at) AS (VALUES ${sql.join(tuples, sql`, `)})
+      INSERT INTO redemption_codes (pool_id, code, created_at)
+      SELECT p.id, incoming.code, incoming.created_at FROM incoming CROSS JOIN code_pools p
+      WHERE p.id = ${pool.id} AND p.space_id = ${c.get('spaceId')}
       ON CONFLICT (pool_id, code) DO NOTHING RETURNING code
     `);
       const saved = new Set(inserted.map((row) => row.code));
@@ -236,6 +258,8 @@ const routes = app
       for (const row of chunk)
         if (!saved.has(row.code)) failures.push({ ...row, reason: '码池中已存在该兑换码' });
     }
+    // Deletion between import chunks must not report success or duplicate codes.
+    await ownedPool(c);
     failures.sort((a, b) => a.line - b.line);
     return c.json({ succeeded, failed: failures.length, failures }, 200);
   })
@@ -334,7 +358,8 @@ const routes = app
     WHERE pool_id = (SELECT id FROM code_pools WHERE claim_key = ${key}) AND code = ${data.code} AND claim_status = 'claimed'
     RETURNING user_marked_used_at AS userMarkedUsedAt
   `);
-    if (!row) return c.json({ error: '找不到对应的已领取兑换码' }, 404);
+    if (!row)
+      return c.json({ error: '领取记录已不存在，无法标记使用；已保存的兑换码仍可复制。' }, 404);
     return c.json(
       { userMarkedUsed: true, userMarkedUsedAt: row.userMarkedUsedAt } satisfies UsedResult,
       200,

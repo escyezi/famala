@@ -29,5 +29,9 @@ export function usePools(poolId?: string) {
     setError('');
     setRevision((value) => value + 1);
   }, []);
-  return { pools, loading, error, refresh };
+  const removePool = useCallback((id: number) => {
+    setPools((items) => items?.filter((pool) => pool.id !== id) ?? null);
+    setError('');
+  }, []);
+  return { pools, loading, error, refresh, removePool };
 }

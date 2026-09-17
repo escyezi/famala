@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { Manager } from '../../src/react-app/components/Manager.tsx';
-import { json, mockApi, pool } from './helpers.ts';
+import { deferred, json, mockApi, pool } from './helpers.ts';
 
 const baseRoutes = {
   'GET /api/manage/pools': () => json({ items: [pool] } satisfies ApiResponses['pools']),
@@ -190,4 +190,49 @@ test('停止和恢复发放后刷新状态，提交正确的目标状态', async
   expect(setStatus).toHaveBeenLastCalledWith(
     expect.objectContaining({ body: JSON.stringify({ status: 'active' }) }),
   );
+});
+
+test('删除需确认，取消不发请求；失败可重试，提交中不能重复删除或关闭', async () => {
+  const pending = deferred<Response>();
+  const remove = vi
+    .fn()
+    .mockImplementationOnce(() => json({ error: '暂时无法删除' }, 500))
+    .mockImplementationOnce(() => pending.promise);
+  const fetch = mockApi({ ...baseRoutes, 'DELETE /api/manage/pools/1': remove });
+  const user = userEvent.setup();
+  const { onNavigate } = renderManager(String(pool.id));
+  await user.click(await screen.findByRole('button', { name: '删除码池' }));
+  let dialog = screen.getByRole('dialog', { name: '删除码池' });
+  expect(dialog).toHaveTextContent(pool.name);
+  expect(dialog).toHaveTextContent('此操作无法撤销');
+  await user.click(within(dialog).getByRole('button', { name: '取消' }));
+  expect(remove).not.toHaveBeenCalled();
+  expect(onNavigate).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button', { name: '删除码池' }));
+  dialog = screen.getByRole('dialog', { name: '删除码池' });
+  await user.click(within(dialog).getByRole('button', { name: '确认删除' }));
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('暂时无法删除');
+  expect(onNavigate).not.toHaveBeenCalled();
+  await user.dblClick(within(dialog).getByRole('button', { name: '确认删除' }));
+  expect(within(dialog).getByRole('button', { name: '正在删除…' })).toBeDisabled();
+  expect(within(dialog).getByRole('button', { name: '取消' })).toBeDisabled();
+  expect(within(dialog).queryByRole('button', { name: '关闭弹窗' })).not.toBeInTheDocument();
+  expect(remove).toHaveBeenCalledTimes(2);
+  const deleteCall = fetch.mock.calls.find(([, init]) => init?.method === 'DELETE');
+  expect(new Headers(deleteCall?.[1]?.headers).get('Content-Type')).toBe('application/json');
+  pending.resolve(json({ ok: true } satisfies ApiResponses['deletePool']));
+  await waitFor(() => expect(onNavigate).toHaveBeenCalledExactlyOnceWith('/manage'));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
+test('码池已被其他页面删除时，再次删除也返回列表', async () => {
+  mockApi({
+    ...baseRoutes,
+    'DELETE /api/manage/pools/1': () => json({ error: '码池不存在' }, 404),
+  });
+  const user = userEvent.setup();
+  const { onNavigate } = renderManager(String(pool.id));
+  await user.click(await screen.findByRole('button', { name: '删除码池' }));
+  await user.click(screen.getByRole('button', { name: '确认删除' }));
+  await waitFor(() => expect(onNavigate).toHaveBeenCalledExactlyOnceWith('/manage'));
 });

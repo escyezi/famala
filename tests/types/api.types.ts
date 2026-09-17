@@ -20,6 +20,10 @@ export async function apiTypeChecks() {
   );
   expectTypeOf(renamed.name).toEqualTypeOf<string>();
   expectTypeOf(renamed.id).toEqualTypeOf<number>();
+  const deleted = await api(rpc.api.manage.pools[':id'].$delete({ param: { id: '1' } }));
+  expectTypeOf(deleted.ok).toEqualTypeOf<true>();
+  // @ts-expect-error Deletion requires a pool ID.
+  rpc.api.manage.pools[':id'].$delete();
   // Remark is optional; request input comes from validation, not a caller cast.
   const claimed = await api(
     rpc.api.claim.$post({ json: { claimKey: 'key', turnstileToken: 'token' } }),

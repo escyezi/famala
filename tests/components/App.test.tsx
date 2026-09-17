@@ -227,3 +227,32 @@ test('管理页会话查询失败可重试，连接故障不误判为需要登�
   await screen.findByText('从第一个码池开始');
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
+
+test('删除后返回空间并立即移除旧卡片，后退不能重新打开已删除详情', async () => {
+  const refreshed = deferred<Response>();
+  let deleted = false;
+  mockApi({
+    'GET /api/manage/session': () => json(session satisfies ApiResponses['session']),
+    'GET /api/manage/pools': () =>
+      deleted ? refreshed.promise : json({ items: [pool] } satisfies ApiResponses['pools']),
+    'GET /api/manage/pools/1/codes?page=1&status=all': () =>
+      json({ items: [row], total: 1, page: 1, pageSize: 50 } satisfies ApiResponses['codes']),
+    'DELETE /api/manage/pools/1': () => {
+      deleted = true;
+      return json({ ok: true } satisfies ApiResponses['deletePool']);
+    },
+  });
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole('button', { name: /发码管理/ }));
+  await user.click(await screen.findByRole('link', { name: new RegExp(pool.name) }));
+  await user.click(await screen.findByRole('button', { name: '删除码池' }));
+  await user.click(screen.getByRole('button', { name: '确认删除' }));
+  expect(await screen.findByRole('heading', { name: '我的空间' })).toBeVisible();
+  expect(location.pathname).toBe('/manage');
+  expect(screen.queryByRole('link', { name: new RegExp(pool.name) })).not.toBeInTheDocument();
+  await act(async () => refreshed.resolve(json({ items: [] } satisfies ApiResponses['pools'])));
+  act(() => history.back());
+  expect(await screen.findByText('码池不存在或无权访问。')).toBeVisible();
+  expect(screen.queryByText(pool.claimKey)).not.toBeInTheDocument();
+});

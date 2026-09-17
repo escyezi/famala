@@ -3,7 +3,7 @@ import type { Pool } from '../../shared/api-types.ts';
 import { dateTime } from '../api.ts';
 import { usePoolDetails } from '../hooks/usePoolDetails.ts';
 import { CopyButton, Icon, Notice } from './ui.tsx';
-import { ImportDialog, PoolNameDialog } from './PoolDialogs.tsx';
+import { DeletePoolDialog, ImportDialog, PoolNameDialog } from './PoolDialogs.tsx';
 
 // Manager keys this component by pool ID: drafts, filters and pages belong to one pool.
 export function PoolDetail({
@@ -11,13 +11,15 @@ export function PoolDetail({
   error: poolsError,
   onRefresh,
   onNavigate,
+  onDeleted,
 }: {
   pool: Pool;
   error: string;
   onRefresh: () => void;
   onNavigate: (path: string) => void;
+  onDeleted: () => void;
 }) {
-  const [dialog, setDialog] = useState<'rename' | 'import' | null>(null);
+  const [dialog, setDialog] = useState<'rename' | 'import' | 'delete' | null>(null);
   const {
     codes,
     codesError,
@@ -55,6 +57,13 @@ export function PoolDetail({
           <button className="text-button" onClick={refresh}>
             刷新数据
           </button>
+          <button
+            className="button danger small"
+            disabled={busy}
+            onClick={() => setDialog('delete')}
+          >
+            删除码池
+          </button>
         </div>
       </div>
       <Notice>{error || poolsError}</Notice>
@@ -74,7 +83,11 @@ export function PoolDetail({
             <button className="button secondary small" disabled={busy} onClick={status}>
               {pool.status === 'active' ? '停止发放' : '恢复发放'}
             </button>
-            <button className="button primary small" onClick={() => setDialog('import')}>
+            <button
+              className="button primary small"
+              disabled={busy}
+              onClick={() => setDialog('import')}
+            >
               <Icon name="plus" size={16} />
               导入兑换码
             </button>
@@ -228,6 +241,9 @@ export function PoolDetail({
       )}
       {dialog === 'import' && (
         <ImportDialog pool={pool} onClose={() => setDialog(null)} onImported={imported} />
+      )}
+      {dialog === 'delete' && (
+        <DeletePoolDialog pool={pool} onClose={() => setDialog(null)} onDeleted={onDeleted} />
       )}
     </>
   );

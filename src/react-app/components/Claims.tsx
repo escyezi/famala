@@ -10,17 +10,21 @@ import { Turnstile } from './Turnstile.tsx';
 function RecordCard({
   record,
   onMarked,
+  unavailable = false,
 }: {
   record: ClaimRecord;
   onMarked?: (record: ClaimRecord) => void;
+  unavailable?: boolean;
 }) {
   const [used, setUsed] = useState<UsedResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
+  const [missing, setMissing] = useState(false);
+  const cannotMark = unavailable || missing;
   const marked = record.userMarkedUsed || used !== null;
   async function mark() {
-    if (busy || marked) return;
+    if (busy || marked || cannotMark) return;
     setBusy(true);
     setError('');
     try {
@@ -36,7 +40,8 @@ function RecordCard({
       onMarked?.({ ...record, ...result });
       setWarning(await saveUsed(record, result));
     } catch (e) {
-      setError((e as Error).message);
+      if (e instanceof ApiError && e.status === 404) setMissing(true);
+      else setError((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -56,14 +61,17 @@ function RecordCard({
       </div>
       <Notice>{error}</Notice>
       <Notice kind="info">{warning}</Notice>
+      {cannotMark && (
+        <Notice kind="info">领取记录已不存在，无法标记使用；已保存的兑换码仍可复制。</Notice>
+      )}
       <div className="record-footer">
         <button
           className={`button ${marked ? 'secondary' : 'primary'} small`}
           onClick={mark}
-          disabled={marked || busy}
+          disabled={marked || busy || cannotMark}
         >
           <Icon name="check" size={16} />
-          {marked ? '已标记使用' : busy ? '正在标记…' : '我已使用'}
+          {marked ? '已标记使用' : cannotMark ? '无法标记使用' : busy ? '正在标记…' : '我已使用'}
         </button>
         {marked && (
           <span className="muted small-text">
@@ -162,6 +170,7 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
   const [loaded, setLoaded] = useState(false);
+  const [poolMissing, setPoolMissing] = useState(false);
   const [revision, setRevision] = useState(0);
   useEffect(() => subscribeRecords(() => setSnapshot(readRecords())), []);
   useEffect(() => {
@@ -176,13 +185,19 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
       api(rpc.api.config.$get(undefined, { init: { signal: controller.signal } })),
     ])
       .then(([p, conf]) => {
+        if (controller.signal.aborted) return;
         setPool(p);
+        setPoolMissing(false);
         setConfig(conf);
         setError('');
         setLoaded(true);
       })
       .catch((e: Error) => {
         if (!controller.signal.aborted) {
+          if (e instanceof ApiError && e.status === 404) {
+            setPool(null);
+            setPoolMissing(true);
+          }
           setError(e.message);
           setLoaded(true);
         }
@@ -235,6 +250,10 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
         setPool((p) => p && { ...p, status: 'stopped' });
       if (e instanceof ApiError && e.code === 'POOL_EMPTY')
         setPool((p) => p && { ...p, remaining: 0 });
+      if (e instanceof ApiError && e.status === 404) {
+        setPool(null);
+        setPoolMissing(true);
+      }
     } finally {
       setToken('');
       setAttempt((v) => v + 1);
@@ -249,16 +268,23 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
           <Icon name={record ? 'check' : 'gift'} size={34} />
         </span>
         <div className="eyebrow">A LITTLE SOMETHING FOR YOU</div>
-        <h1>{pool?.name ?? '领取兑换码'}</h1>
-        {record && pool && <p className="muted">复制兑换码，前往对应平台使用。</p>}
+        <h1>{pool?.name ?? record?.poolName ?? '领取兑换码'}</h1>
+        {record && <p className="muted">复制兑换码，前往对应平台使用。</p>}
       </div>
       <Notice>{error}</Notice>
       <Notice kind="info">{warning || snapshot.warning}</Notice>
-      {!loaded ? (
+      {record ? (
+        <RecordCard
+          key={`${record.claimKey}:${record.code}`}
+          record={record}
+          onMarked={setResult}
+          unavailable={poolMissing}
+        />
+      ) : !loaded ? (
         <div className="empty-state">正在加载领取信息…</div>
       ) : !pool ? (
         <div className="claim-panel">
-          <p>暂时无法加载领取信息。</p>
+          {!poolMissing && <p>暂时无法加载领取信息。</p>}
           <div className="actions">
             <button className="button secondary" onClick={() => setRevision((v) => v + 1)}>
               重试
@@ -268,12 +294,6 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
             </button>
           </div>
         </div>
-      ) : record ? (
-        <RecordCard
-          key={`${record.claimKey}:${record.code}`}
-          record={record}
-          onMarked={setResult}
-        />
       ) : (
         <section className="claim-panel">
           <div className={`claim-status-banner ${distributionState}`} role="status">

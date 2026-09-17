@@ -46,11 +46,18 @@ afterAll(async () => {
   vi.unstubAllGlobals();
   await proxy?.dispose();
 });
-async function request(path, data, cookie, bindings = env, headers = {}) {
+async function request(
+  path,
+  data,
+  cookie,
+  bindings = env,
+  headers = {},
+  method = data === undefined ? 'GET' : 'POST',
+) {
   const response = await app.request(
     `https://famala.example${path}`,
     {
-      method: data === undefined ? 'GET' : 'POST',
+      method,
       headers: {
         ...(data === undefined ? {} : { 'Content-Type': 'application/json' }),
         ...(cookie ? { Cookie: cookie } : {}),
@@ -79,6 +86,7 @@ async function pool(cookie, name = crypto.randomUUID()) {
   return listing.body.items.find((p) => p.id === response.body.id);
 }
 const imported = (p, cookie, text) => request(`/api/manage/pools/${p.id}/import`, { text }, cookie);
+const deleted = (p, cookie) => request(`/api/manage/pools/${p.id}`, {}, cookie, env, {}, 'DELETE');
 const claim = (p, overrides = {}, bindings = env) =>
   request(
     '/api/claim',
@@ -86,6 +94,155 @@ const claim = (p, overrides = {}, bindings = env) =>
     undefined,
     bindings,
   );
+
+test('deleting a pool removes all its codes, invalidates sharing, and preserves other pools', async () => {
+  const owner = await space();
+  const p = await pool(owner.cookie);
+  const other = await pool(owner.cookie);
+  await imported(p, owner.cookie, 'DELETE-CLAIMED\nDELETE-UNCLAIMED');
+  await imported(other, owner.cookie, 'KEEP');
+  const claimed = await claim(p);
+  assert.equal(claimed.status, 200);
+  assert.deepEqual((await deleted(p, owner.cookie)).body, { ok: true });
+  assert.equal(
+    (
+      await env.DB.prepare('SELECT count(*) AS total FROM redemption_codes WHERE pool_id = ?')
+        .bind(p.id)
+        .first()
+    ).total,
+    0,
+  );
+  assert.deepEqual(
+    (await request('/api/manage/pools', undefined, owner.cookie)).body.items.map((item) => item.id),
+    [other.id],
+  );
+  assert.equal(
+    (await request(`/api/manage/pools/${p.id}/codes`, undefined, owner.cookie)).status,
+    404,
+  );
+  assert.equal((await request('/api/claim/validate', { claimKey: p.claimKey })).status, 404);
+  assert.equal((await claim(p)).status, 404);
+  assert.equal(
+    (await request('/api/claim/used', { claimKey: p.claimKey, code: claimed.body.code })).status,
+    404,
+  );
+  assert.equal((await deleted(p, owner.cookie)).status, 404);
+  assert.equal((await claim(other)).body.code, 'KEEP');
+  const replacement = await pool(owner.cookie, p.name);
+  assert.ok(replacement.id > p.id);
+  assert.notEqual(replacement.claimKey, p.claimKey);
+  assert.equal((await deleted(replacement, owner.cookie)).status, 200);
+  assert.deepEqual((await env.DB.prepare('PRAGMA foreign_key_check').all()).results, []);
+});
+
+test('deletion enforces sessions, ownership, valid IDs and same-origin JSON requests', async () => {
+  const owner = await space();
+  const outsider = await space();
+  const p = await pool(owner.cookie);
+  await imported(p, owner.cookie, 'PROTECTED');
+  assert.equal((await deleted(p)).status, 401);
+  assert.equal((await deleted(p, outsider.cookie)).status, 404);
+  for (const id of ['0', '-1', '1e0', `${p.id}oops`, '9007199254740992']) {
+    assert.equal((await deleted({ id }, owner.cookie)).status, 404);
+  }
+  for (const [headers, status] of [
+    [{ Origin: 'https://evil.example' }, 403],
+    [{ 'Content-Type': 'text/plain' }, 415],
+  ]) {
+    assert.equal(
+      (await request(`/api/manage/pools/${p.id}`, {}, owner.cookie, env, headers, 'DELETE')).status,
+      status,
+    );
+  }
+  assert.equal((await claim(p)).body.code, 'PROTECTED');
+});
+
+test('failed parent deletion rolls back deletion of all codes', async () => {
+  const owner = await space();
+  const p = await pool(owner.cookie);
+  await imported(p, owner.cookie, 'ROLLBACK');
+  await env.DB.prepare(
+    "CREATE TRIGGER reject_test_delete BEFORE DELETE ON code_pools BEGIN SELECT RAISE(ABORT, 'test failure'); END",
+  ).run();
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    assert.equal((await deleted(p, owner.cookie)).status, 500);
+    assert.equal(
+      (await request(`/api/manage/pools/${p.id}/codes`, undefined, owner.cookie)).body.items[0]
+        .code,
+      'ROLLBACK',
+    );
+  } finally {
+    await env.DB.prepare('DROP TRIGGER reject_test_delete').run();
+    log.mockRestore();
+  }
+  assert.equal((await claim(p)).body.code, 'ROLLBACK');
+});
+
+test('deletion while Siteverify is pending prevents issuing a code', async () => {
+  const owner = await space();
+  const p = await pool(owner.cookie);
+  await imported(p, owner.cookie, 'DELETE-RACE');
+  verification = async () => {
+    assert.equal((await deleted(p, owner.cookie)).status, 200);
+    return successfulVerification();
+  };
+  assert.equal((await claim(p)).status, 404);
+});
+
+test.each([
+  [
+    'import',
+    /WITH incoming/,
+    { text: Array.from({ length: 21 }, (_, i) => `RACE-${i}`).join('\n') },
+    2,
+  ],
+  ['name', /UPDATE OR IGNORE/, { name: 'renamed' }, 1],
+  ['status', /update "code_pools" set "status"/i, { status: 'stopped' }, 1],
+])(
+  'deletion during %s returns 404 instead of stale success or a database error',
+  async (suffix, pattern, data, deleteAt) => {
+    const owner = await space();
+    const p = await pool(owner.cookie);
+    let calls = 0;
+    const bindings = {
+      ...env,
+      DB: {
+        prepare(query) {
+          const statement = env.DB.prepare(query);
+          if (!pattern.test(query)) return statement;
+          return {
+            bind(...params) {
+              const bound = statement.bind(...params);
+              const execute = async (method) => {
+                if (++calls === deleteAt)
+                  assert.equal((await deleted(p, owner.cookie)).status, 200);
+                return bound[method]();
+              };
+              return { all: () => execute('all'), raw: () => execute('raw') };
+            },
+          };
+        },
+      },
+    };
+    const result = await request(
+      `/api/manage/pools/${p.id}/${suffix}`,
+      data,
+      owner.cookie,
+      bindings,
+    );
+    assert.equal(calls, deleteAt);
+    assert.equal(result.status, 404);
+    assert.equal(
+      (
+        await env.DB.prepare('SELECT count(*) AS total FROM redemption_codes WHERE pool_id = ?')
+          .bind(p.id)
+          .first()
+      ).total,
+      0,
+    );
+  },
+);
 
 test('all business tables generate integer IDs without reusing deleted IDs', async () => {
   const owner = await space();

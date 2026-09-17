@@ -1,8 +1,56 @@
 import { useState } from 'react';
-import { api, rpc } from '../api.ts';
+import { api, ApiError, rpc } from '../api.ts';
 import { parseImport } from '../../shared/contracts.ts';
 import type { ImportResult, Pool } from '../../shared/api-types.ts';
 import { Dialog, Icon, Notice } from './ui.tsx';
+
+export function DeletePoolDialog({
+  pool,
+  onClose,
+  onDeleted,
+}: {
+  pool: Pool;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function remove() {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api(rpc.api.manage.pools[':id'].$delete({ param: { id: String(pool.id) } }));
+      onDeleted();
+    } catch (e) {
+      // A retry after a lost response, or deletion in another tab, is already complete.
+      if (e instanceof ApiError && e.status === 404) onDeleted();
+      else setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Dialog title="删除码池" onClose={onClose} locked={busy}>
+      <p className="muted">确定永久删除「{pool.name}」吗？</p>
+      <p className="delete-pool-note">
+        该码池的全部兑换码和领取记录将被删除，领码 Key 与分享链接立即失效。此操作无法撤销。
+      </p>
+      <p className="field-help">
+        已发出的兑换码不会被收回。领取者浏览器中保存的兑换码仍可查看、复制，但无法再标记使用。
+      </p>
+      <Notice>{error}</Notice>
+      <div className="dialog-actions">
+        <button className="button secondary" autoFocus disabled={busy} onClick={onClose}>
+          取消
+        </button>
+        <button className="button danger" disabled={busy} onClick={() => void remove()}>
+          {busy ? '正在删除…' : '确认删除'}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
 
 export function ImportDialog({
   pool,

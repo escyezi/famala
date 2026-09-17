@@ -10,7 +10,7 @@ export function Manager({
   poolId?: string;
   onNavigate: (path: string) => void;
 }) {
-  const { pools, loading, error, refresh } = usePools(poolId);
+  const { pools, loading, error, refresh, removePool } = usePools(poolId);
   const pool = pools?.find((item) => String(item.id) === poolId);
   return (
     <div className="workspace">
@@ -24,6 +24,10 @@ export function Manager({
             error={error}
             onRefresh={refresh}
             onNavigate={onNavigate}
+            onDeleted={() => {
+              removePool(pool.id);
+              onNavigate('/manage');
+            }}
           />
         ) : (
           <>

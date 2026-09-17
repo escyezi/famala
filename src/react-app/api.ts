@@ -22,7 +22,8 @@ async function fetchApi(input: RequestInfo | URL, init?: RequestInit, notifyUnau
   const path = new URL(input instanceof Request ? input.url : String(input), location.origin)
     .pathname;
   const headers = new Headers(init?.headers);
-  if (init?.method === 'POST') headers.set('Content-Type', 'application/json');
+  if (init?.method && !['GET', 'HEAD', 'OPTIONS'].includes(init.method))
+    headers.set('Content-Type', 'application/json');
   let response: Response;
   try {
     response = await fetch(input, {

@@ -110,6 +110,18 @@
   font-size: 12px;
   min-height: 34px;
 }
+.button.danger {
+  color: #a23d35;
+  background: #fff7f5;
+  border-color: #ebc9c4;
+}
+.button.danger:hover:not(:disabled) {
+  background: #fce9e5;
+  border-color: #d9aaa3;
+}
+.delete-pool-note {
+  margin: var(--space-4) 0;
+}
 .full {
   width: 100%;
 }

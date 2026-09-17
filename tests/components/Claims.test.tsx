@@ -203,6 +203,51 @@ test('领取历史为空时展示空状态', () => {
   expect(screen.getByText('暂无已领取的兑换码')).toBeVisible();
 });
 
+test('码池已删除时仍展示本地兑换码，禁止再标记使用', async () => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify([claimRecord]));
+  mockApi({
+    ...publicRoutes,
+    'POST /api/claim/validate': () => json({ error: '领码 Key 无效或码池已删除' }, 404),
+  });
+  renderClaim();
+  expect(await screen.findByRole('button', { name: '无法标记使用' })).toBeDisabled();
+  expect(screen.getByText(claimRecord.code)).toBeVisible();
+  expect(screen.getByRole('button', { name: '复制兑换码' })).toBeEnabled();
+  expect(readRecords().records).toEqual([claimRecord]);
+});
+
+test('领取提交期间码池被删除后，停止领取并保留重新输入 Key 的入口', async () => {
+  mockApi({
+    ...publicRoutes,
+    'POST /api/claim': () => json({ error: '领码 Key 无效或码池已删除' }, 404),
+  });
+  const turnstile = mockTurnstile();
+  const user = userEvent.setup();
+  renderClaim();
+  const submit = await screen.findByRole('button', { name: '领取兑换码' });
+  await turnstile.trigger('callback', 'token');
+  await user.click(submit);
+  expect(await screen.findByRole('alert')).toHaveTextContent('领码 Key 无效或码池已删除');
+  expect(screen.queryByRole('button', { name: '领取兑换码' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '重新输入领码 Key' })).toBeEnabled();
+  expect(readRecords().records).toEqual([]);
+});
+
+test('历史记录标记返回 404 后保留兑换码并禁止重复提交', async () => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify([claimRecord]));
+  const mark = vi.fn(() => json({ error: '领取记录已不存在' }, 404));
+  mockApi({ 'POST /api/claim/used': mark });
+  const user = userEvent.setup();
+  render(<HistoryDialog onClose={vi.fn()} />);
+  await user.click(screen.getByRole('button', { name: '我已使用' }));
+  const disabled = await screen.findByRole('button', { name: '无法标记使用' });
+  expect(disabled).toBeDisabled();
+  await user.click(disabled);
+  expect(mark).toHaveBeenCalledOnce();
+  expect(screen.getByText(claimRecord.code)).toBeVisible();
+  expect(readRecords().records).toEqual([claimRecord]);
+});
+
 test('标记使用失败不修改记录，重试成功后持久化并禁止重复标记', async () => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify([claimRecord]));
   const usedAt = claimRecord.claimedAt + 1000;
