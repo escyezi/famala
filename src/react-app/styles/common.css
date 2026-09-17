@@ -486,6 +486,13 @@
   .dialog {
     padding: 22px;
   }
+  .create-pool-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .create-pool-actions .primary {
+    grid-column: 1 / -1;
+  }
   .table-scroll {
     margin: 0 -4px;
   }

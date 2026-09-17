@@ -16,8 +16,7 @@ export function PoolList({
   onNavigate: (path: string) => void;
 }) {
   const [creating, setCreating] = useState(false);
-  const [importingId, setImportingId] = useState<number | null>(null);
-  const importingPool = pools?.find((pool) => pool.id === importingId);
+  const [importingPool, setImportingPool] = useState<Pick<Pool, 'id' | 'name'> | null>(null);
   return (
     <>
       <div className="page-heading">
@@ -119,7 +118,7 @@ export function PoolList({
                 )}
               </a>
               <div className="pool-card-actions">
-                <button className="button primary small" onClick={() => setImportingId(p.id)}>
+                <button className="button primary small" onClick={() => setImportingPool(p)}>
                   <Icon name="plus" size={15} />
                   导入兑换码
                 </button>
@@ -136,7 +135,7 @@ export function PoolList({
       {importingPool && (
         <ImportDialog
           pool={importingPool}
-          onClose={() => setImportingId(null)}
+          onClose={() => setImportingPool(null)}
           onImported={onRefresh}
         />
       )}
@@ -144,6 +143,11 @@ export function PoolList({
       {creating && (
         <PoolNameDialog
           onClose={() => setCreating(false)}
+          onImport={(pool) => {
+            setCreating(false);
+            setImportingPool(pool);
+            onRefresh();
+          }}
           onSaved={(id) => {
             setCreating(false);
             onRefresh();

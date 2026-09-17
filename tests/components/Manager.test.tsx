@@ -17,7 +17,7 @@ function renderManager(poolId?: string) {
   return { onNavigate };
 }
 
-test('创建码池去掉名称首尾空白，成功后导航至新码池', async () => {
+test('稍后导入会创建空池，去掉名称首尾空白并导航至新码池', async () => {
   const create = vi.fn(() => json({ id: 3 } satisfies ApiResponses['createPool'], 201));
   mockApi({ ...baseRoutes, 'POST /api/manage/pools': create });
   const user = userEvent.setup();
@@ -25,7 +25,7 @@ test('创建码池去掉名称首尾空白，成功后导航至新码池', async
   await screen.findByRole('heading', { name: pool.name });
   await user.click(screen.getByRole('button', { name: '新建兑换码池' }));
   const dialog = screen.getByRole('dialog', { name: '新建兑换码池' });
-  const submit = within(dialog).getByRole('button', { name: '创建空池' });
+  const submit = within(dialog).getByRole('button', { name: '稍后导入' });
   expect(submit).toBeDisabled();
   await user.type(within(dialog).getByLabelText('码池名称'), '  十月福利  ');
   await user.click(submit);
@@ -33,6 +33,45 @@ test('创建码池去掉名称首尾空白，成功后导航至新码池', async
   expect(create).toHaveBeenCalledWith(
     expect.objectContaining({ body: JSON.stringify({ name: '十月福利' }) }),
   );
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
+test('创建并导入不等待列表刷新，导入失败可重试且不会重复创建码池', async () => {
+  const create = vi.fn(() => json({ id: 3 } satisfies ApiResponses['createPool'], 201));
+  const importCodes = vi
+    .fn()
+    .mockImplementationOnce(() => json({ error: '暂时无法导入，请重试' }, 503))
+    .mockImplementationOnce(() =>
+      json({ succeeded: 1, failed: 0, failures: [] } satisfies ApiResponses['importCodes']),
+    );
+  // The list still returns old data: the new pool can be imported into immediately.
+  mockApi({
+    ...baseRoutes,
+    'POST /api/manage/pools': create,
+    'POST /api/manage/pools/3/import': importCodes,
+  });
+  const user = userEvent.setup();
+  const { onNavigate } = renderManager();
+  await screen.findByRole('heading', { name: pool.name });
+  await user.click(screen.getByRole('button', { name: '新建兑换码池' }));
+  expect(screen.getByRole('button', { name: '创建并导入' })).toBeDisabled();
+  await user.type(screen.getByLabelText('码池名称'), '  连续导入  ');
+  await user.keyboard('{Enter}');
+  const dialog = await screen.findByRole('dialog', { name: '导入兑换码' });
+  expect(within(dialog).getByText('连续导入')).toBeVisible();
+  expect(onNavigate).not.toHaveBeenCalled();
+  await user.type(within(dialog).getByLabelText(/兑换码内容/), 'NEW-CODE');
+  await user.click(within(dialog).getByRole('button', { name: '开始导入' }));
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('暂时无法导入，请重试');
+  expect(within(dialog).getByLabelText(/兑换码内容/)).toHaveValue('NEW-CODE');
+  await user.click(within(dialog).getByRole('button', { name: '开始导入' }));
+  expect(await within(dialog).findByText('导入完成：成功 1 条，失败 0 条。')).toBeVisible();
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(importCodes).toHaveBeenCalledTimes(2);
+  expect(importCodes).toHaveBeenLastCalledWith(
+    expect.objectContaining({ body: JSON.stringify({ text: 'NEW-CODE' }) }),
+  );
+  await user.click(within(dialog).getByRole('button', { name: '关闭' }));
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 

@@ -57,7 +57,7 @@ export function ImportDialog({
   onClose,
   onImported,
 }: {
-  pool: Pool;
+  pool: Pick<Pool, 'id' | 'name'>;
   onClose: () => void;
   onImported: () => void;
 }) {
@@ -168,16 +168,17 @@ export function PoolNameDialog({
   pool,
   onClose,
   onSaved,
+  onImport,
 }: {
   pool?: Pool;
   onClose: () => void;
   onSaved: (id: number) => void;
+  onImport?: (pool: Pick<Pool, 'id' | 'name'>) => void;
 }) {
   const [name, setName] = useState(pool?.name ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function save(importNext: boolean) {
     if (busy || !name.trim()) return;
     setBusy(true);
     setError('');
@@ -188,7 +189,8 @@ export function PoolNameDialog({
             rpc.api.manage.pools[':id'].name.$post({ param: { id: String(pool.id) }, json }),
           )
         : await api(rpc.api.manage.pools.$post({ json }));
-      onSaved(result.id);
+      if (!pool && importNext && onImport) onImport({ id: result.id, name: json.name });
+      else onSaved(result.id);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -200,10 +202,15 @@ export function PoolNameDialog({
       <p className="muted">
         {pool
           ? '修改后原领码 Key 和链接继续有效，已有兑换码和领取记录不受影响。'
-          : '为这次发放起个名字。创建后可随时导入兑换码。'}
+          : '为这次发放起个名字，下一步导入兑换码；也可以先创建，稍后导入。'}
       </p>
       <Notice>{error}</Notice>
-      <form onSubmit={submit}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save(true);
+        }}
+      >
         <label htmlFor="pool-name">码池名称</label>
         <input
           id="pool-name"
@@ -215,16 +222,26 @@ export function PoolNameDialog({
           disabled={busy}
         />
         <p className="field-help">名称不能为空，也不能与当前空间的其他码池重名。</p>
-        <div className="dialog-actions">
+        <div className={`dialog-actions${!pool && onImport ? ' create-pool-actions' : ''}`}>
           <button type="button" className="button secondary" disabled={busy} onClick={onClose}>
             取消
           </button>
+          {!pool && onImport && (
+            <button
+              type="button"
+              className="button secondary"
+              disabled={busy || !name.trim()}
+              onClick={() => void save(false)}
+            >
+              稍后导入
+            </button>
+          )}
           <button
             className="button primary"
             disabled={busy || !name.trim() || name.trim() === pool?.name}
           >
-            {busy ? '保存中…' : pool ? '保存名称' : '创建空池'}
-            <Icon name={pool ? 'check' : 'plus'} size={16} />
+            {busy ? '保存中…' : pool ? '保存名称' : onImport ? '创建并导入' : '创建空池'}
+            <Icon name={pool ? 'check' : onImport ? 'arrow' : 'plus'} size={16} />
           </button>
         </div>
       </form>
