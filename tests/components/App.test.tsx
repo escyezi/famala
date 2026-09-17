@@ -1,5 +1,5 @@
 import type { ApiResponses } from './helpers.ts';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import App from '../../src/react-app/App.tsx';
@@ -32,7 +32,8 @@ test('游客打开首页不会因会话 401 弹出登录框，校验领码 Key �
     sessionResponse.resolve(json({ error: '未登录' }, 401));
   });
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  expect(screen.queryByRole('link', { name: '发码管理' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /我要发码/ })).toBeVisible();
+  expect(screen.queryByRole('button', { name: /发码管理/ })).not.toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: /我要领码/ }));
   await user.type(screen.getByLabelText('领码 Key'), pool.claimKey);
   await user.click(screen.getByRole('button', { name: '前往领取' }));
@@ -56,7 +57,7 @@ test('管理接口返回 401 时展示登录框，取消后回到首页', async 
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 
-test('登录后展示管理入口，通过空间菜单退出后回到首页', async () => {
+test('首页发码入口等待会话确认，登录后直接返回当前空间，退出后恢复游客入口', async () => {
   const initialSession = deferred<Response>();
   const readSession = vi.fn(() => initialSession.promise);
   mockApi({
@@ -72,16 +73,26 @@ test('登录后展示管理入口，通过空间菜单退出后回到首页', as
   const user = userEvent.setup();
   render(<App />);
   await user.click(screen.getByRole('button', { name: /我要发码/ }));
+  expect(screen.getByText('正在连接发码空间…')).toBeVisible();
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  await act(async () => initialSession.resolve(json({ error: '未登录' }, 401)));
   await user.click(screen.getByRole('button', { name: /使用已有 Key/ }));
   await user.type(screen.getByLabelText('发码 Key'), 'd_saved-key');
   await user.click(screen.getByRole('button', { name: '进入管理页面' }));
   expect(await screen.findByText('从第一个码池开始')).toBeVisible();
   expect(location.pathname).toBe('/manage');
-  // The initial public-page check may finish after login; it must not erase the new session.
-  await act(async () => initialSession.resolve(json({ error: '未登录' }, 401)));
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(readSession).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole('link', { name: '发码管理' })).toBeVisible();
+  await user.click(screen.getByRole('link', { name: 'famala.' }));
+  expect(screen.queryByRole('button', { name: /我要发码/ })).not.toBeInTheDocument();
+  const manageEntry = screen.getByRole('button', { name: /发码管理/ });
+  expect(manageEntry).toHaveTextContent('进入我的发码空间');
+  expect(within(screen.getByRole('navigation')).queryByText('发码管理')).not.toBeInTheDocument();
+  await user.click(manageEntry);
+  expect(await screen.findByText('从第一个码池开始')).toBeVisible();
+  expect(location.pathname).toBe('/manage');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(readSession).toHaveBeenCalledTimes(1);
   const menu = screen.getByRole('button', { name: '我的发码空间' });
   await user.click(menu);
   expect(menu).toHaveAttribute('aria-expanded', 'true');
@@ -93,7 +104,8 @@ test('登录后展示管理入口，通过空间菜单退出后回到首页', as
   await user.click(screen.getByRole('button', { name: '退出登录' }));
   expect(await screen.findByRole('button', { name: /我要发码/ })).toBeVisible();
   expect(location.pathname).toBe('/');
-  expect(screen.queryByRole('link', { name: '发码管理' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /发码管理/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '我的发码空间' })).not.toBeInTheDocument();
 });
 
 test('前进后退和切换码池重置详情状态，已离开的请求返回 401 不打断当前页面', async () => {
@@ -126,7 +138,7 @@ test('前进后退和切换码池重置详情状态，已离开的请求返回 4
   await user.click(screen.getByRole('button', { name: '已领取' }));
   await user.click(screen.getByRole('button', { name: '修改名称' }));
   act(() => history.back());
-  await screen.findByRole('heading', { name: '兑换码池', level: 1 });
+  await screen.findByRole('heading', { name: '我的空间', level: 1 });
   expect(oldSignal?.aborted).toBe(true);
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   act(() => history.forward());
@@ -177,7 +189,7 @@ test('会话过期清除旧空间详情，重新登录保留目标路由且忽�
   await user.click(screen.getByRole('button', { name: '刷新数据' }));
   await screen.findByRole('dialog', { name: '开始发放兑换码' });
   expect(screen.queryByText(pool.claimKey)).not.toBeInTheDocument();
-  expect(screen.queryByRole('link', { name: '发码管理' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '我的发码空间' })).not.toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: /使用已有 Key/ }));
   await user.type(screen.getByLabelText('发码 Key'), 'd_saved-key');
   await user.click(screen.getByRole('button', { name: '进入管理页面' }));

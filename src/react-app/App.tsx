@@ -65,19 +65,6 @@ function App() {
         <span className="header-divider" />
         <span className="product-name">兑换码发放平台</span>
         <nav>
-          {session && (
-            <a
-              href="/manage"
-              className={managing ? 'current' : ''}
-              onClick={(e) => {
-                if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-                e.preventDefault();
-                go('/manage');
-              }}
-            >
-              发码管理
-            </a>
-          )}
           <button className="history-button" onClick={() => setModal('history')}>
             <Icon name="history" size={17} />
             <span>已领取的兑换码</span>
@@ -143,21 +130,21 @@ function App() {
             </div>
           </div>
           <div className="entry-cards">
-            <button className="entry-card distribute" onClick={() => setModal('auth')}>
+            <button className="entry-card distribute" onClick={() => go('/manage')}>
               <div className="entry-top">
                 <span className="tile-icon large">
                   <Icon name="box" size={28} />
                 </span>
                 <span className="entry-number">01 / SHARE</span>
               </div>
-              <h2>我要发码</h2>
+              <h2>{session ? '发码管理' : '我要发码'}</h2>
               <p>
                 创建兑换码池、批量导入，
                 <br />
                 一个链接，让分享开始。
               </p>
               <span className="entry-link">
-                开启我的发码空间
+                {session ? '进入我的发码空间' : '开启我的发码空间'}
                 <Icon name="arrow" />
               </span>
             </button>

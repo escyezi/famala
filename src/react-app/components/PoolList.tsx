@@ -21,7 +21,7 @@ export function PoolList({
       <div className="page-heading">
         <div>
           <div className="eyebrow">DISTRIBUTOR WORKSPACE</div>
-          <h1>兑换码池</h1>
+          <h1>我的空间</h1>
           <p className="muted">创建、分享，轻松管理每一次发放。</p>
         </div>
         <div className="heading-actions">
@@ -50,7 +50,6 @@ export function PoolList({
             <Icon name="box" size={32} />
           </span>
           <h3>从第一个码池开始</h3>
-          <p>为你的活动创建一个码池，再导入兑换码。</p>
           <button className="button secondary" onClick={() => setCreating(true)}>
             <Icon name="plus" size={16} />
             新建兑换码池
