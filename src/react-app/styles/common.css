@@ -190,9 +190,18 @@
 }
 .copy-action {
   display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-1);
+}
+.copy-fallback-input {
+  width: 280px;
+  max-width: 100%;
+  min-width: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
 }
 .dot {
   display: inline-block;

@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import App from '../../src/react-app/App.tsx';
 import type { CodeRow } from '../../src/shared/api-types.ts';
-import { deferred, json, mockApi, pool, session } from './helpers.ts';
+import { deferred, json, mockApi, pool, publicPool, session } from './helpers.ts';
 
 const row: CodeRow = {
   id: 1,
@@ -21,7 +21,7 @@ test('游客打开首页不会因会话 401 弹出登录框，校验领码 Key �
   const sessionResponse = deferred<Response>();
   mockApi({
     'GET /api/manage/session': () => sessionResponse.promise,
-    'POST /api/claim/validate': () => json(pool satisfies ApiResponses['validateClaim']),
+    'POST /api/claim/validate': () => json(publicPool),
     'GET /api/config': () =>
       json({ turnstileSiteKey: 'test-key', testMode: true } satisfies ApiResponses['config']),
   });

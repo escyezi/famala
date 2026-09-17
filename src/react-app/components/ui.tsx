@@ -146,14 +146,16 @@ export function CopyButton({
   className?: string;
 }) {
   const [state, setState] = useState('');
+  const fallbackId = useId();
   useEffect(() => {
-    if (!state) return;
+    if (state !== '已复制') return;
     const timer = setTimeout(() => setState(''), 2500);
     return () => clearTimeout(timer);
   }, [state]);
   return (
     <span className="copy-action">
       <button
+        type="button"
         className={className}
         onClick={async () => {
           try {
@@ -168,9 +170,20 @@ export function CopyButton({
         {state === '已复制' ? state : label}
       </button>
       {state && state !== '已复制' && (
-        <span className="field-error" role="alert">
-          {state}
-        </span>
+        <>
+          <span id={fallbackId} className="field-error" role="alert">
+            {state}
+          </span>
+          <input
+            className="copy-fallback-input"
+            aria-label={`${label}：手动复制内容`}
+            aria-describedby={fallbackId}
+            value={value}
+            readOnly
+            onFocus={(event) => event.currentTarget.select()}
+            onClick={(event) => event.currentTarget.select()}
+          />
+        </>
       )}
     </span>
   );

@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import type { Pool } from '../../shared/api-types.ts';
 import { dateTime } from '../api.ts';
-import { Icon, Notice } from './ui.tsx';
-import { PoolNameDialog } from './PoolDialogs.tsx';
+import { CopyButton, Icon, Notice } from './ui.tsx';
+import { ImportDialog, PoolNameDialog } from './PoolDialogs.tsx';
 
 export function PoolList({
   pools,
@@ -16,6 +16,8 @@ export function PoolList({
   onNavigate: (path: string) => void;
 }) {
   const [creating, setCreating] = useState(false);
+  const [importingId, setImportingId] = useState<number | null>(null);
+  const importingPool = pools?.find((pool) => pool.id === importingId);
   return (
     <>
       <div className="page-heading">
@@ -58,41 +60,79 @@ export function PoolList({
       ) : (
         <div className="pool-grid">
           {pools.map((p) => (
-            <a
-              className="pool-card"
-              key={p.id}
-              href={`/manage/pools/${p.id}`}
-              onClick={(e) => {
-                if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-                e.preventDefault();
-                onNavigate(`/manage/pools/${p.id}`);
-              }}
-            >
-              <div className="pool-card-top">
-                <h3 title={p.name}>{p.name}</h3>
-                {p.total > 0 && (
+            <article className="pool-card" key={p.id} aria-labelledby={`pool-name-${p.id}`}>
+              <a
+                className="pool-card-main"
+                href={`/manage/pools/${p.id}`}
+                onClick={(e) => {
+                  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                  e.preventDefault();
+                  onNavigate(`/manage/pools/${p.id}`);
+                }}
+              >
+                <div className="pool-card-top">
+                  <h3 id={`pool-name-${p.id}`} title={p.name}>
+                    {p.name}
+                  </h3>
                   <span
-                    className={`status ${p.status === 'stopped' ? 'stopped' : p.remaining > 0 ? 'active' : 'exhausted'}`}
+                    className={`status ${p.status === 'stopped' ? 'stopped' : p.total === 0 ? 'pending' : p.remaining > 0 ? 'active' : 'exhausted'}`}
                   >
-                    {p.status === 'stopped' ? '已停止' : p.remaining > 0 ? '发放中' : '已领完'}
+                    {p.status === 'stopped'
+                      ? '已停止'
+                      : p.total === 0
+                        ? '待导入'
+                        : p.remaining > 0
+                          ? '发放中'
+                          : '已领完'}
                   </span>
+                </div>
+                <p>创建于 {dateTime(p.createdAt)}</p>
+                {p.total === 0 ? (
+                  <div className="pool-card-empty">
+                    <span>暂无兑换码</span>
+                    <small>
+                      {p.status === 'stopped'
+                        ? '导入后需在详情中恢复发放'
+                        : '导入兑换码后即可分享发放'}
+                    </small>
+                  </div>
+                ) : (
+                  <>
+                    <div className="pool-progress">
+                      <span style={{ width: `${(p.claimed / p.total) * 100}%` }} />
+                    </div>
+                    <div className="pool-counts">
+                      <span>
+                        已领取 <b>{p.claimed}</b> / {p.total}
+                      </span>
+                      <span>
+                        剩余 <b>{p.remaining}</b>
+                      </span>
+                    </div>
+                  </>
                 )}
+              </a>
+              <div className="pool-card-actions">
+                <button className="button primary small" onClick={() => setImportingId(p.id)}>
+                  <Icon name="plus" size={15} />
+                  导入兑换码
+                </button>
+                <CopyButton
+                  value={`${location.origin}/claim?key=${encodeURIComponent(p.claimKey)}`}
+                  label="复制领码链接"
+                />
               </div>
-              <p>创建于 {dateTime(p.createdAt)}</p>
-              <div className="pool-progress">
-                <span style={{ width: `${p.total ? (p.claimed / p.total) * 100 : 0}%` }} />
-              </div>
-              <div className="pool-counts">
-                <span>
-                  已领取 <b>{p.claimed}</b> / {p.total}
-                </span>
-                <span>
-                  剩余 <b>{p.remaining}</b>
-                </span>
-              </div>
-            </a>
+            </article>
           ))}
         </div>
+      )}
+
+      {importingPool && (
+        <ImportDialog
+          pool={importingPool}
+          onClose={() => setImportingId(null)}
+          onImported={onRefresh}
+        />
       )}
 
       {creating && (

@@ -4,10 +4,18 @@ import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { ClaimPage, HistoryDialog } from '../../src/react-app/components/Claims.tsx';
 import { readRecords, STORAGE_KEY } from '../../src/react-app/storage.ts';
-import { claimRecord, deferred, json, mockApi, mockTurnstile, pool } from './helpers.ts';
+import {
+  claimRecord,
+  deferred,
+  json,
+  mockApi,
+  mockTurnstile,
+  pool,
+  publicPool,
+} from './helpers.ts';
 
 const publicRoutes = {
-  'POST /api/claim/validate': () => json(pool satisfies ApiResponses['validateClaim']),
+  'POST /api/claim/validate': () => json(publicPool),
   'GET /api/config': () =>
     json({ turnstileSiteKey: 'test-site-key', testMode: true } satisfies ApiResponses['config']),
 };
@@ -95,9 +103,9 @@ test.each([
   const validate = vi
     .fn()
     .mockImplementationOnce(() =>
-      json({ ...pool, status, remaining } satisfies ApiResponses['validateClaim']),
+      json({ ...publicPool, status, remaining } satisfies ApiResponses['validateClaim']),
     )
-    .mockImplementationOnce(() => json(pool satisfies ApiResponses['validateClaim']));
+    .mockImplementationOnce(() => json(publicPool));
   mockApi({ ...publicRoutes, 'POST /api/claim/validate': validate });
   const turnstile = mockTurnstile();
   const user = userEvent.setup();
@@ -167,7 +175,7 @@ test('加载失败后可以重试，也可以请求重新输入 Key', async () =
   const validate = vi
     .fn()
     .mockImplementationOnce(() => json({ error: '领取信息加载失败' }, 500))
-    .mockImplementationOnce(() => json(pool satisfies ApiResponses['validateClaim']));
+    .mockImplementationOnce(() => json(publicPool));
   mockApi({ ...publicRoutes, 'POST /api/claim/validate': validate });
   const onEnterKey = vi.fn();
   const user = userEvent.setup();

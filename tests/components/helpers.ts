@@ -78,6 +78,12 @@ export const pool: Pool = {
   remaining: 2,
 };
 
+export const publicPool = {
+  name: pool.name,
+  status: pool.status,
+  remaining: pool.remaining,
+} satisfies ApiResponses['validateClaim'];
+
 export const session = {
   spaceId: 123456789,
   expiresAt: 1_900_000_000_000,
