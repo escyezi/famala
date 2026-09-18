@@ -86,7 +86,7 @@ test('首页发码入口等待会话确认，登录后直接返回当前空间�
   await user.click(screen.getByRole('link', { name: 'famala.' }));
   expect(screen.queryByRole('button', { name: /我要发码/ })).not.toBeInTheDocument();
   const manageEntry = screen.getByRole('button', { name: /发码管理/ });
-  expect(manageEntry).toHaveTextContent('进入我的发码空间');
+  expect(manageEntry).toHaveTextContent('进入发码管理');
   expect(within(screen.getByRole('navigation')).queryByText('发码管理')).not.toBeInTheDocument();
   await user.click(manageEntry);
   expect(await screen.findByText('从第一个码池开始')).toBeVisible();

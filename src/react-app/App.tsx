@@ -137,32 +137,22 @@ function App() {
           </div>
           <div className="entry-cards">
             <button className="entry-card distribute" onClick={() => go('/manage')}>
-              <div className="entry-top">
-                <span className="tile-icon large">
-                  <Icon name="box" size={28} />
-                </span>
-                <span className="entry-number">{t('home.shareEyebrow')}</span>
-              </div>
+              <span className="tile-icon large">
+                <Icon name="box" size={28} />
+              </span>
               <h2>{session ? t('home.manage') : t('home.distribute')}</h2>
-              <p>
-                <Trans i18nKey="home.shareDescription" components={{ br: <br /> }} />
-              </p>
+              <p>{t('home.shareDescription')}</p>
               <span className="entry-link">
                 {session ? t('home.enter') : t('home.start')}
                 <Icon name="arrow" />
               </span>
             </button>
             <button className="entry-card receive" onClick={() => setModal('claim')}>
-              <div className="entry-top">
-                <span className="tile-icon large">
-                  <Icon name="gift" size={28} />
-                </span>
-                <span className="entry-number">{t('home.receiveEyebrow')}</span>
-              </div>
+              <span className="tile-icon large">
+                <Icon name="gift" size={28} />
+              </span>
               <h2>{t('home.receive')}</h2>
-              <p>
-                <Trans i18nKey="home.claimDescription" components={{ br: <br /> }} />
-              </p>
+              <p>{t('home.claimDescription')}</p>
               <span className="entry-link">
                 {t('home.enterKey')}
                 <Icon name="arrow" />
@@ -171,7 +161,6 @@ function App() {
           </div>
           <div className="home-bottom">
             <span>{t('home.tagline')}</span>
-            <span>{t('home.bottomEyebrow')}</span>
           </div>
         </main>
       )}

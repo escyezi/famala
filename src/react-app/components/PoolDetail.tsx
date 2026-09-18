@@ -130,6 +130,7 @@ export function PoolDetail({
             {t('common.createdAt', { date: dateTime(pool.createdAt) })}
           </p>
         </div>
+        <p className="pool-stats-note">{t('manage.claimedSummaryHelp')}</p>
         <div id={keyPanelId} hidden={!keyVisible}>
           <div className="share-key">
             <code>{pool.claimKey}</code>
