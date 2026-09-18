@@ -26,6 +26,7 @@ async function fetchApi(input: RequestInfo | URL, init?: RequestInit, notifyUnau
   if (init?.method && !['GET', 'HEAD', 'OPTIONS'].includes(init.method))
     headers.set('Content-Type', 'application/json');
   let response: Response;
+  const started = performance.now();
   try {
     response = await fetch(input, {
       ...init,
@@ -33,6 +34,16 @@ async function fetchApi(input: RequestInfo | URL, init?: RequestInit, notifyUnau
       cache: 'no-store',
       headers,
     });
+    if (import.meta.env.DEV && path === '/api/claim') {
+      console.debug(
+        '[claim timing]',
+        JSON.stringify({
+          status: response.status,
+          requestMs: Number((performance.now() - started).toFixed(2)),
+          serverTiming: response.headers.get('Server-Timing'),
+        }),
+      );
+    }
   } catch (error) {
     if (isAbortError(error)) throw error;
     throw new ApiError(path === '/api/claim' ? 'CLAIM_NETWORK_ERROR' : 'NETWORK_ERROR', 0);

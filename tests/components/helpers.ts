@@ -70,6 +70,7 @@ export const claimRecord = {
 export const pool: Pool = {
   id: 1,
   name: claimRecord.poolName,
+  description: null,
   claimKey: claimRecord.claimKey,
   status: 'active',
   createdAt: claimRecord.claimedAt,
@@ -81,6 +82,7 @@ export const pool: Pool = {
 
 export const publicPool = {
   name: pool.name,
+  description: pool.description,
   status: pool.status,
   remaining: pool.remaining,
 } satisfies ApiResponses['validateClaim'];

@@ -386,6 +386,7 @@ export function PoolNameDialog({
 }) {
   const { t } = useTranslation();
   const [name, setName] = useState(pool?.name ?? '');
+  const [description, setDescription] = useState(pool?.description ?? '');
   const [busy, setBusy] = useState(false);
   const startRequest = useDialogRequest();
   const [error, setError] = useState<Message | null>(null);
@@ -396,7 +397,7 @@ export function PoolNameDialog({
     setBusy(true);
     setError(null);
     try {
-      const json = { name: name.trim() };
+      const json = { name: name.trim(), description: description.trim() || null };
       const result = pool
         ? await api(
             rpc.api.manage.pools[':id'].name.$post(
@@ -442,6 +443,19 @@ export function PoolNameDialog({
           disabled={busy}
         />
         <p className="field-help">{t('manage.nameHelp')}</p>
+        <label htmlFor="pool-description">{t('manage.description')}</label>
+        <textarea
+          id="pool-description"
+          rows={4}
+          placeholder={t('manage.descriptionPlaceholder')}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          disabled={busy}
+          aria-describedby="pool-description-help"
+        />
+        <p id="pool-description-help" className="field-help">
+          {t('manage.descriptionHelp')}
+        </p>
         <div className={`dialog-actions${!pool && onImport ? ' create-pool-actions' : ''}`}>
           <button type="button" className="button secondary" disabled={busy} onClick={onClose}>
             {t('common.cancel')}
@@ -458,7 +472,11 @@ export function PoolNameDialog({
           )}
           <button
             className="button primary"
-            disabled={busy || !name.trim() || name.trim() === pool?.name}
+            disabled={
+              busy ||
+              !name.trim() ||
+              (name.trim() === pool?.name && description.trim() === (pool?.description ?? ''))
+            }
           >
             {busy
               ? t('manage.saving')

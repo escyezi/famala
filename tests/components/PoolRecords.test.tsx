@@ -414,7 +414,7 @@ test('refresh locks all query/write controls while read-only interactions stay a
   expect(screen.getByRole('link', { name: '返回码池列表' })).toBeVisible();
   await user.click(screen.getByRole('button', { name: '更多' }));
   expect(screen.getByRole('button', { name: '查看领码 Key' })).toBeEnabled();
-  for (const name of ['标记已兑换', '修改名称', '停止发放', '删除码池']) {
+  for (const name of ['标记已兑换', '编辑码池', '停止发放', '删除码池']) {
     expect(screen.getByRole('button', { name })).toBeDisabled();
   }
   await user.click(screen.getByRole('button', { name: '查看领码 Key' }));
@@ -608,9 +608,9 @@ test.each(['import', 'rename', 'single', 'bulk', 'pool'] as const)(
       await user.click(screen.getByRole('button', { name: '开始导入' }));
     } else if (kind === 'rename') {
       await user.click(screen.getByRole('button', { name: '更多' }));
-      await user.click(screen.getByRole('button', { name: '修改名称' }));
-      await user.type(screen.getByRole('textbox'), 'new');
-      await user.click(screen.getByRole('button', { name: '保存名称' }));
+      await user.click(screen.getByRole('button', { name: '编辑码池' }));
+      await user.type(screen.getByRole('textbox', { name: '码池名称' }), 'new');
+      await user.click(screen.getByRole('button', { name: '保存修改' }));
     } else {
       if (kind === 'single') {
         await user.click(screen.getByRole('button', { name: '展开 AVAILABLE 详情' }));

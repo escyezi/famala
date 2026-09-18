@@ -106,6 +106,31 @@ const claim = (p, overrides = {}, bindings = env) =>
     bindings,
   );
 
+test('claim timing reports only executed stages on success and failures', async () => {
+  const owner = await space();
+  const p = await pool(owner.cookie);
+  const stages = (response) => {
+    const header = response.headers.get('Server-Timing');
+    assert.ok(header);
+    return header.split(', ').map((entry) => {
+      assert.match(entry, /^[a-z_]+;dur=\d+\.\d{2}$/);
+      return entry.split(';')[0];
+    });
+  };
+  const empty = await claim(p);
+  assert.equal(empty.status, 409);
+  assert.deepEqual(stages(empty), ['pool_lookup', 'total']);
+  await imported(p, owner.cookie, 'TIMING-TEST');
+  verification = async () => Response.json({ success: false });
+  const rejected = await claim(p);
+  assert.equal(rejected.status, 400);
+  assert.deepEqual(stages(rejected), ['pool_lookup', 'turnstile', 'total']);
+  verification = successfulVerification;
+  const success = await claim(p);
+  assert.equal(success.status, 200);
+  assert.deepEqual(stages(success), ['pool_lookup', 'turnstile', 'code_allocate', 'total']);
+});
+
 test('workspace pool limit is atomic, includes stopped pools and frees capacity after deletion', async () => {
   const owner = await space();
   await env.DB.prepare(
@@ -723,7 +748,12 @@ test('empty pools and partial import: names, original line numbers, Unicode, dup
   const last = await request(`/api/manage/pools/${p.id}/codes?page=11`, undefined, owner.cookie);
   assert.equal(last.body.items.length, 4);
   const validation = await request('/api/claim/validate', { claimKey: p.claimKey });
-  assert.deepEqual(Object.keys(validation.body).sort(), ['name', 'remaining', 'status']);
+  assert.deepEqual(Object.keys(validation.body).sort(), [
+    'description',
+    'name',
+    'remaining',
+    'status',
+  ]);
   assert.equal(validation.body.remaining, 504);
 });
 
@@ -902,7 +932,12 @@ test('renaming preserves claims and sharing keys; duplicate and concurrent names
   const result = await rename(p.id, '  新名称  ');
   assert.deepEqual(result.body, { id: p.id, name: '新名称' });
   const validation = await request('/api/claim/validate', { claimKey: p.claimKey });
-  assert.deepEqual(validation.body, { name: '新名称', status: 'stopped', remaining: 1 });
+  assert.deepEqual(validation.body, {
+    name: '新名称',
+    description: null,
+    status: 'stopped',
+    remaining: 1,
+  });
   const after = (await request(`/api/manage/pools/${p.id}/codes`, undefined, owner.cookie)).body;
   assert.deepEqual(after, before);
   const updated = (await request('/api/manage/pools', undefined, owner.cookie)).body.items.find(
@@ -912,6 +947,60 @@ test('renaming preserves claims and sharing keys; duplicate and concurrent names
   assert.equal(updated.createdAt, p.createdAt);
   const races = await Promise.all([rename(p.id, '同一个名字'), rename(other.id, '同一个名字')]);
   assert.deepEqual(races.map((r) => r.status).sort(), [200, 409]);
+});
+
+test('pool descriptions are optional, editable, public, and protected with the pool', async () => {
+  const owner = await space();
+  const outsider = await space();
+  const created = await request(
+    '/api/manage/pools',
+    {
+      name: '说明测试',
+      description: '  第一行\n第二行 😀  ',
+    },
+    owner.cookie,
+  );
+  assert.equal(created.status, 201);
+  const readPool = async () =>
+    (await request('/api/manage/pools', undefined, owner.cookie)).body.items.find(
+      (item) => item.id === created.body.id,
+    );
+  const p = await readPool();
+  assert.equal(p.description, '第一行\n第二行 😀');
+  const readDescription = async () =>
+    (await request('/api/claim/validate', { claimKey: p.claimKey })).body.description;
+  assert.equal(await readDescription(), p.description);
+  const path = `/api/manage/pools/${p.id}/name`;
+  assert.equal(
+    (await request(path, { name: p.name, description: '篡改' }, outsider.cookie)).status,
+    404,
+  );
+  assert.equal((await request(path, { name: p.name, description: '篡改' })).status, 401);
+  assert.equal(await readDescription(), p.description);
+  await request(path, { name: '改名' }, owner.cookie);
+  assert.equal(await readDescription(), p.description);
+  for (const description of [42, {}, ['text'], 'bad\0text']) {
+    assert.equal((await request(path, { name: '改名', description }, owner.cookie)).status, 400);
+    assert.equal(
+      (await request('/api/manage/pools', { name: '无效说明', description }, owner.cookie)).status,
+      400,
+    );
+  }
+  const other = await pool(owner.cookie);
+  assert.equal(other.description, null);
+  assert.equal(
+    (await request(path, { name: other.name, description: '不应保存' }, owner.cookie)).status,
+    409,
+  );
+  assert.equal(await readDescription(), p.description);
+  await request(path, { name: '改名', description: '更新说明' }, owner.cookie);
+  assert.equal(await readDescription(), '更新说明');
+  for (const description of [' \n ', null]) {
+    await request(path, { name: '改名', description }, owner.cookie);
+    assert.equal(await readDescription(), null);
+    assert.equal((await readPool()).description, null);
+  }
+  assert.equal((await readPool()).claimKey, p.claimKey);
 });
 
 test('Hono RPC client interoperates with actual routes, JSON validators and query parsing', async () => {

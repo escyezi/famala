@@ -24,6 +24,33 @@ function renderClaim() {
   return render(<ClaimPage claimKey={pool.claimKey} onEnterKey={vi.fn()} />);
 }
 
+test('领码前后展示纯文本说明并保留换行内容', async () => {
+  const description = '请在月底前兑换\n<script>alert(1)</script>';
+  mockApi({
+    ...publicRoutes,
+    'POST /api/claim/validate': () => json({ ...publicPool, description }),
+    'POST /api/claim': () => json(claimRecord),
+  });
+  const turnstile = mockTurnstile();
+  const user = userEvent.setup();
+  renderClaim();
+  const panel = await screen.findByRole('region', { name: '码池说明' });
+  expect(panel.querySelector('p')?.textContent).toBe(description);
+  expect(panel.querySelector('script')).toBeNull();
+  await turnstile.trigger('callback', 'token');
+  await user.click(screen.getByRole('button', { name: '领取兑换码' }));
+  expect(await screen.findByText(claimRecord.code)).toBeVisible();
+  expect(panel).toBeVisible();
+});
+
+test('没有说明时不展示说明区域', async () => {
+  mockApi(publicRoutes);
+  mockTurnstile();
+  renderClaim();
+  await screen.findByRole('button', { name: '领取兑换码' });
+  expect(screen.queryByRole('region', { name: '码池说明' })).not.toBeInTheDocument();
+});
+
 test('验证通过后才能领取，重复点击只发出一次请求，结果在重新挂载后仍可查看', async () => {
   const pending = deferred<Response>();
   const claim = vi.fn(() => pending.promise);

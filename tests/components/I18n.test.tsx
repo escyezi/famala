@@ -201,7 +201,10 @@ test('English code pool creation preserves user content', async () => {
   await user.type(screen.getByLabelText('Code pool name'), '九月会员福利');
   await user.click(screen.getByRole('button', { name: 'Create empty pool' }));
   expect(save).toHaveBeenCalledWith(9);
-  expect(JSON.parse(create.mock.calls[0][0].body as string)).toEqual({ name: '九月会员福利' });
+  expect(JSON.parse(create.mock.calls[0][0].body as string)).toEqual({
+    name: '九月会员福利',
+    description: null,
+  });
 });
 
 test('component reactivity: import results and row reasons translate without losing the draft or reimporting', async () => {

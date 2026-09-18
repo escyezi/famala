@@ -224,6 +224,12 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
         <h1>{pool?.name ?? record?.poolName ?? t('claim.submit')}</h1>
         {record && <p className="muted">{t('claim.copyHelp')}</p>}
       </div>
+      {pool?.description && (
+        <section className="claim-panel claim-description" aria-label={t('claim.description')}>
+          <h2>{t('claim.description')}</h2>
+          <p>{pool.description}</p>
+        </section>
+      )}
       <Notice>{error}</Notice>
       <Notice kind="info">{warning || snapshot.warning}</Notice>
       {record ? (
@@ -276,9 +282,14 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
             <button
               className="button primary full claim-button"
               disabled={!available || !token || busy || length > 500}
+              aria-busy={busy}
             >
               {t('claim.submit')}
-              {available && !busy && <Icon name="arrow" size={18} />}
+              {busy ? (
+                <span className="claim-spinner" aria-hidden="true" />
+              ) : available ? (
+                <Icon name="arrow" size={18} />
+              ) : null}
             </button>
           </form>
           {!available && (

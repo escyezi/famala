@@ -48,6 +48,21 @@
   font-size: 13px;
   font-weight: 500;
 }
+.claim-description {
+  margin-bottom: 20px;
+}
+.claim-description h2 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.claim-description p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.7;
+}
 .claim-status-banner.stopped {
   background: #fbf7ee;
   border-color: #eee4ce;
@@ -76,6 +91,25 @@
 .claim-button {
   margin-top: 15px;
   min-height: 47px;
+}
+.claim-spinner {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: claim-spin 0.7s linear infinite;
+}
+@keyframes claim-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .claim-spinner {
+    animation: none;
+  }
 }
 .claim-footnote {
   display: flex;

@@ -18,6 +18,8 @@ npm run dev
 
 `.dev.vars.example` 包含 Cloudflare 官方公开测试密钥，仅用于本地开发。领取仍然调用 Cloudflare 的 Siteverify，因此需要网络访问 `challenges.cloudflare.com`。如果内嵌浏览器的验证组件无法加载，请使用 Chrome 打开本地地址；验证未通过时服务端不会发码。
 
+排查领码延迟时，在 Chrome Network 中选中 `/api/claim`，查看响应头 `Server-Timing` 或 Timing 页签：`pool_lookup` 为码池查询，`turnstile` 为外网验证，`code_allocate` 为原子分配兑换码，`pool_recheck` 为分配失败后的状态复查，`total` 为领码处理总耗时，单位均为毫秒。仅记录实际执行的阶段；请求校验失败、未进入领码处理时不包含这些指标。本地开发的 Console 开启 Verbose 级别后，可搜索 `[claim timing]` 查看浏览器收到响应头的耗时与服务端分段计时。日志不包含 Key、验证 Token、备注或兑换码，生产构建不输出该前端日志。
+
 ## 已实现
 
 - 首页发码/领码入口；生成并确认保存发码 Key，已有 Key 登录、退出、切换空间。

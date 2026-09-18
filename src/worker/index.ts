@@ -15,6 +15,7 @@ import {
   sessionCookie,
 } from './auth.ts';
 import { turnstileConfig, verifyTurnstile } from './turnstile.ts';
+import { withServerTiming } from './timing.ts';
 import {
   parseImport,
   importFailure,
@@ -63,6 +64,7 @@ app.use(
 const poolColumns = {
   id: codePools.id,
   name: codePools.name,
+  description: codePools.description,
   claimKey: codePools.claimKey,
   status: codePools.status,
   createdAt: codePools.createdAt,
@@ -98,6 +100,7 @@ async function publicPool(c: Context<AppEnv>, key: string) {
     .select({
       id: codePools.id,
       name: codePools.name,
+      description: codePools.description,
       status: codePools.status,
       remaining: poolColumns.remaining,
     })
@@ -184,13 +187,13 @@ const routes = app
     return c.json({ items }, 200);
   })
   .post('/api/manage/pools', poolNameInput, async (c) => {
-    const { name } = c.req.valid('json');
+    const { name, description } = c.req.valid('json');
     const db = drizzle(c.env.DB);
     const spaceId = c.get('spaceId');
     // Check capacity in the insert itself so concurrent creates cannot exceed the limit.
     const [pool] = await db.all<{ id: number }>(sql`
-      INSERT INTO code_pools (space_id, name, claim_key, created_at)
-      SELECT ${spaceId}, ${name}, ${randomKey('c_')}, ${Date.now()}
+      INSERT INTO code_pools (space_id, name, description, claim_key, created_at)
+      SELECT ${spaceId}, ${name}, ${description ?? null}, ${randomKey('c_')}, ${Date.now()}
       WHERE (SELECT count(*) FROM code_pools WHERE space_id = ${spaceId}) < ${MAX_POOLS_PER_SPACE}
       ON CONFLICT (space_id, name) DO NOTHING RETURNING id
     `);
@@ -222,11 +225,13 @@ const routes = app
   })
   .post('/api/manage/pools/:id/name', poolNameInput, async (c) => {
     const pool = await ownedPool(c);
-    const { name } = c.req.valid('json');
-    // Only the name changes. The existing unique constraint also protects against
-    // two pools being renamed to the same name concurrently.
+    const { name, description } = c.req.valid('json');
+    // Keep the existing endpoint compatible with name-only clients. Update the
+    // description atomically with the name, preserving it when omitted.
+    const descriptionUpdate =
+      description === undefined ? sql`` : sql`, description = ${description}`;
     const renamed = await drizzle(c.env.DB).get<{ id: number; name: string }>(sql`
-    UPDATE OR IGNORE code_pools SET name = ${name.trim()}
+    UPDATE OR IGNORE code_pools SET name = ${name.trim()}${descriptionUpdate}
     WHERE id = ${pool.id} AND space_id = ${c.get('spaceId')}
     RETURNING id, name
   `);
@@ -466,20 +471,32 @@ const routes = app
   .post('/api/claim/validate', claimKeyInput, async (c) => {
     const data = c.req.valid('json');
     const pool = await publicPool(c, data.claimKey);
-    return c.json({ name: pool.name, status: pool.status, remaining: pool.remaining }, 200);
+    return c.json(
+      {
+        name: pool.name,
+        description: pool.description,
+        status: pool.status,
+        remaining: pool.remaining,
+      },
+      200,
+    );
   })
-  .post('/api/claim', claimInput, async (c) => {
-    const data = c.req.valid('json');
-    const key = data.claimKey;
-    const pool = await publicPool(c, key);
-    if (pool.status === 'stopped') return c.json(errorBody('POOL_STOPPED'), 409);
-    const remark = data.remark ?? null;
-    if (!pool.remaining) return c.json(errorBody('POOL_EMPTY'), 409);
-    const verification = await verifyTurnstile(c.env, c.req.url, data.turnstileToken);
-    if (!verification.ok)
-      return c.json(errorBody('TURNSTILE_FAILED'), verification.unavailable ? 503 : 400);
-    // One statement rechecks active status and availability after verification.
-    const row = await drizzle(c.env.DB).get<{ code: string; claimedAt: number }>(sql`
+  .post('/api/claim', claimInput, (c) =>
+    withServerTiming(c, async (measure) => {
+      const data = c.req.valid('json');
+      const key = data.claimKey;
+      const pool = await measure('pool_lookup', () => publicPool(c, key));
+      if (pool.status === 'stopped') return c.json(errorBody('POOL_STOPPED'), 409);
+      const remark = data.remark ?? null;
+      if (!pool.remaining) return c.json(errorBody('POOL_EMPTY'), 409);
+      const verification = await measure('turnstile', () =>
+        verifyTurnstile(c.env, c.req.url, data.turnstileToken),
+      );
+      if (!verification.ok)
+        return c.json(errorBody('TURNSTILE_FAILED'), verification.unavailable ? 503 : 400);
+      // One statement rechecks active status and availability after verification.
+      const row = await measure('code_allocate', () =>
+        drizzle(c.env.DB).get<{ code: string; claimedAt: number }>(sql`
     UPDATE redemption_codes SET status = 'claimed', claimed_at = ${Date.now()}, remark = ${remark}
     WHERE id = (
       SELECT r.id FROM redemption_codes r JOIN code_pools p ON p.id = r.pool_id
@@ -487,21 +504,23 @@ const routes = app
       ORDER BY r.created_at, r.id LIMIT 1
     ) AND status = 'unclaimed'
     RETURNING code, claimed_at AS claimedAt
-  `);
-    if (!row) {
-      const current = await publicPool(c, key);
-      return c.json(errorBody(current.status === 'stopped' ? 'POOL_STOPPED' : 'POOL_EMPTY'), 409);
-    }
-    return c.json(
-      {
-        poolName: pool.name,
-        claimKey: key,
-        code: row.code,
-        claimedAt: row.claimedAt,
-      } satisfies ClaimRecord,
-      200,
-    );
-  });
+  `),
+      );
+      if (!row) {
+        const current = await measure('pool_recheck', () => publicPool(c, key));
+        return c.json(errorBody(current.status === 'stopped' ? 'POOL_STOPPED' : 'POOL_EMPTY'), 409);
+      }
+      return c.json(
+        {
+          poolName: pool.name,
+          claimKey: key,
+          code: row.code,
+          claimedAt: row.claimedAt,
+        } satisfies ClaimRecord,
+        200,
+      );
+    }),
+  );
 app.notFound((c) => c.json(errorBody('NOT_FOUND'), 404));
 app.onError((error, c) => {
   if (error instanceof ApiException)

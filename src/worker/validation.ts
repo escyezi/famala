@@ -25,10 +25,19 @@ export const loginInput = validator('json', (value: unknown, c) => {
 });
 
 export const poolNameInput = validator('json', (value: unknown, c) => {
-  const { name } = object(value);
+  const { name, description } = object(value);
   if (typeof name !== 'string' || !name.trim()) return c.json(errorBody('POOL_NAME_REQUIRED'), 400);
   if (name.includes('\0')) return c.json(errorBody('POOL_NAME_NULL'), 400);
-  return { name: name.trim() };
+  if (
+    description !== undefined &&
+    description !== null &&
+    (typeof description !== 'string' || description.includes('\0'))
+  )
+    return c.json(errorBody('INVALID_POOL_DESCRIPTION'), 400);
+  return {
+    name: name.trim(),
+    ...(description === undefined ? {} : { description: description?.trim() || null }),
+  };
 });
 
 export const poolStatusInput = validator('json', (value: unknown, c) => {
