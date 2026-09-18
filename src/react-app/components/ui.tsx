@@ -18,6 +18,7 @@ export function Icon({
     | 'key'
     | 'history'
     | 'refresh'
+    | 'search'
     | 'logout'
     | 'trash'
     | 'close'
@@ -33,6 +34,12 @@ export function Icon({
     ),
     arrow: <path d="M5 12h14m-6-6 6 6-6 6" />,
     plus: <path d="M12 5v14M5 12h14" />,
+    search: (
+      <>
+        <circle cx="10.5" cy="10.5" r="6.5" />
+        <path d="m16 16 5 5" />
+      </>
+    ),
     copy: (
       <>
         <rect x="8" y="8" width="12" height="13" rx="2" />
@@ -172,6 +179,7 @@ export function CopyButton({
       <button
         type="button"
         className={className}
+        title={label}
         onClick={async () => {
           try {
             await navigator.clipboard.writeText(value);
@@ -182,7 +190,9 @@ export function CopyButton({
         }}
       >
         <Icon name={state === 'copied' ? 'check' : 'copy'} size={15} />
-        {state === 'copied' ? t('common.copied') : label}
+        <span className="copy-button-label" aria-live="polite">
+          {state === 'copied' ? t('common.copied') : label}
+        </span>
       </button>
       {state === 'failed' && (
         <>

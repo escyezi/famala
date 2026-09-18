@@ -139,7 +139,7 @@ test('前进后退和切换码池重置详情状态，已离开的请求返回 4
   await user.click(await screen.findByRole('button', { name: '更多' }));
   await user.click(screen.getByRole('button', { name: '修改名称' }));
   act(() => history.back());
-  await screen.findByRole('heading', { name: '我的空间', level: 1 });
+  await screen.findByRole('heading', { name: /^我的码池/, level: 1 });
   expect(oldSignal?.aborted).toBe(true);
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   act(() => history.forward());
@@ -250,7 +250,7 @@ test('删除后返回空间并立即移除旧卡片，后退不能重新打开�
   await user.click(await screen.findByRole('button', { name: '更多' }));
   await user.click(await screen.findByRole('button', { name: '删除码池' }));
   await user.click(screen.getByRole('button', { name: '确认删除' }));
-  expect(await screen.findByRole('heading', { name: '我的空间' })).toBeVisible();
+  expect(await screen.findByRole('heading', { name: /^我的码池/ })).toBeVisible();
   expect(location.pathname).toBe('/manage');
   expect(screen.queryByRole('link', { name: new RegExp(pool.name) })).not.toBeInTheDocument();
   await act(async () => refreshed.resolve(json({ items: [] } satisfies ApiResponses['pools'])));

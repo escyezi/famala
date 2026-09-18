@@ -16,7 +16,9 @@ export function Manager({
   const pool = pools?.find((item) => String(item.id) === poolId);
   return (
     <div className="workspace">
-      <main className={`manager-main${pool ? ' manager-detail-main' : ''}`}>
+      <main
+        className={`manager-main${!poolId ? ' manager-list-main' : pool ? ' manager-detail-main' : ''}`}
+      >
         {!poolId ? (
           <PoolList pools={pools} error={error} onRefresh={refresh} onNavigate={onNavigate} />
         ) : pool ? (
