@@ -1,6 +1,6 @@
 .workspace {
   display: flex;
-  min-height: calc(100vh - 80px);
+  min-height: calc(100dvh - 80px);
 }
 .workspace-menu-slot {
   display: flex;
@@ -271,7 +271,8 @@
 .manager-main.manager-detail-main {
   max-width: 1320px;
   height: calc(100dvh - 80px);
-  min-height: 640px;
+  min-height: 0;
+  overflow: hidden;
   padding-top: 24px;
   padding-bottom: 24px;
 }
@@ -440,7 +441,7 @@
 .pool-records {
   display: flex;
   flex-direction: column;
-  min-height: 260px;
+  min-height: 0;
   flex: 1;
 }
 .table-toolbar {
@@ -501,6 +502,7 @@
   min-height: 0;
   flex: 1;
   overflow: auto;
+  overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
 .pool-codes-scroll table {
@@ -654,7 +656,7 @@
     display: none;
   }
   .workspace {
-    min-height: calc(100vh - 66px);
+    min-height: calc(100dvh - 66px);
   }
   .manager-main {
     padding: 27px 17px;
@@ -692,13 +694,11 @@
     padding: var(--space-4);
   }
   .manager-main.manager-detail-main {
-    height: auto;
-    min-height: calc(100dvh - 66px);
+    height: calc(100dvh - 66px);
     padding-top: 20px;
     padding-bottom: 20px;
   }
   .pool-detail-page {
-    height: auto;
     gap: 12px;
   }
   .pool-page-header {
@@ -730,10 +730,6 @@
     padding-inline: 6px;
     gap: 4px;
   }
-  .pool-records {
-    min-height: 0;
-    flex: initial;
-  }
   .table-pagination {
     flex-wrap: wrap;
     width: 100%;
@@ -746,10 +742,6 @@
   .table-pagination .button {
     padding: 7px 9px;
     font-size: 11px;
-  }
-  .pool-codes-scroll {
-    flex: initial;
-    max-height: 60dvh;
   }
 }
 @media (max-width: 560px) {
