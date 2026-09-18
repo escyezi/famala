@@ -24,6 +24,33 @@ export async function apiTypeChecks() {
   expectTypeOf(deleted.ok).toEqualTypeOf<true>();
   // @ts-expect-error Deletion requires a pool ID.
   rpc.api.manage.pools[':id'].$delete();
+  const bulkDeleted = await api(
+    rpc.api.manage.pools[':id'].codes.$delete({
+      param: { id: '1' },
+      json: { ids: [1, 2] },
+    }),
+  );
+  expectTypeOf(bulkDeleted.deleted).toEqualTypeOf<number>();
+  expectTypeOf(bulkDeleted.skipped).toEqualTypeOf<number>();
+  // @ts-expect-error Bulk deletion requires the explicit list of numeric IDs.
+  rpc.api.manage.pools[':id'].codes.$delete({ param: { id: '1' }, json: { ids: ['1'] } });
+  const deletedCode = await api(
+    rpc.api.manage.pools[':id'].codes[':codeId'].$delete({
+      param: { id: '1', codeId: '2' },
+    }),
+  );
+  expectTypeOf(deletedCode.ok).toEqualTypeOf<true>();
+  // @ts-expect-error Individual deletion also requires a code ID.
+  rpc.api.manage.pools[':id'].codes[':codeId'].$delete({ param: { id: '1' } });
+  for (const status of ['unclaimed', 'unused', 'used'] as const) {
+    const codes = await api(
+      rpc.api.manage.pools[':id'].codes.$get({
+        param: { id: '1' },
+        query: { status },
+      }),
+    );
+    expectTypeOf(codes.items[0].userMarkedUsedAt).toEqualTypeOf<number | null>();
+  }
   // Remark is optional; request input comes from validation, not a caller cast.
   const claimed = await api(
     rpc.api.claim.$post({ json: { claimKey: 'key', turnstileToken: 'token' } }),
@@ -49,7 +76,7 @@ export async function apiTypeChecks() {
   // @ts-expect-error Status must be a validated enum member.
   rpc.api.manage.pools[':id'].status.$post({ param: { id: 'pool' }, json: { status: 'deleted' } });
   // @ts-expect-error Query enum must match server validation.
-  rpc.api.manage.pools[':id'].codes.$get({ param: { id: 'pool' }, query: { status: 'used' } });
+  rpc.api.manage.pools[':id'].codes.$get({ param: { id: 'pool' }, query: { status: 'invalid' } });
   // @ts-expect-error Query parameters travel as strings.
   rpc.api.manage.pools[':id'].codes.$get({ param: { id: 'pool' }, query: { page: 2 } });
   // @ts-expect-error Page size must be one of the supported choices.

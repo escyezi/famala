@@ -5,7 +5,7 @@ import type { Message } from '../../shared/messages.ts';
 import { useState } from 'react';
 import { api, ApiError, rpc } from '../api.ts';
 import { parseImport } from '../../shared/contracts.ts';
-import type { ImportResult, Pool } from '../../shared/api-types.ts';
+import type { CodeRow, DeleteCodesResult, ImportResult, Pool } from '../../shared/api-types.ts';
 import { Dialog, Icon, Notice } from './ui.tsx';
 
 export function DeletePoolDialog({
@@ -40,6 +40,124 @@ export function DeletePoolDialog({
       <p className="muted">{t('manage.deleteConfirm', { name: pool.name })}</p>
       <p className="delete-pool-note">{t('manage.deleteNote')}</p>
       <p className="field-help">{t('manage.deleteHistory')}</p>
+      <Notice>{error}</Notice>
+      <div className="dialog-actions">
+        <button className="button secondary" autoFocus disabled={busy} onClick={onClose}>
+          {t('common.cancel')}
+        </button>
+        <button className="button danger" disabled={busy} onClick={() => void remove()}>
+          {busy ? t('manage.deleting') : t('manage.confirmDelete')}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+export function DeleteCodeDialog({
+  pool,
+  code,
+  onClose,
+  onDeleted,
+  onRefresh,
+}: {
+  pool: Pool;
+  code: CodeRow;
+  onClose: () => void;
+  onDeleted: () => void;
+  onRefresh: () => void;
+}) {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const [claimed, setClaimed] = useState(false);
+  const [error, setError] = useState<Message | null>(null);
+  async function remove() {
+    if (busy || claimed) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api(
+        rpc.api.manage.pools[':id'].codes[':codeId'].$delete({
+          param: { id: String(pool.id), codeId: String(code.id) },
+        }),
+      );
+      onDeleted();
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'CODE_NOT_FOUND') onDeleted();
+      else {
+        setError(toMessage(e));
+        if (e instanceof ApiError && e.code === 'CODE_ALREADY_CLAIMED') {
+          setClaimed(true);
+          onRefresh();
+        }
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Dialog title={t('manage.deleteCode')} onClose={onClose} locked={busy}>
+      <p className="muted">{t('manage.deleteCodeConfirm')}</p>
+      <p className="delete-code-value">
+        <code>{code.code}</code>
+      </p>
+      <p className="field-help">{t('manage.deleteCodeNote')}</p>
+      <Notice>{error}</Notice>
+      <div className="dialog-actions">
+        <button className="button secondary" autoFocus disabled={busy} onClick={onClose}>
+          {t('common.cancel')}
+        </button>
+        <button className="button danger" disabled={busy || claimed} onClick={() => void remove()}>
+          {busy ? t('manage.deleting') : t('manage.confirmDelete')}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+export function DeleteCodesDialog({
+  pool,
+  codes,
+  onClose,
+  onDeleted,
+}: {
+  pool: Pool;
+  codes: CodeRow[];
+  onClose: () => void;
+  onDeleted: (result: DeleteCodesResult) => void;
+}) {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<Message | null>(null);
+  async function remove() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      onDeleted(
+        await api(
+          rpc.api.manage.pools[':id'].codes.$delete({
+            param: { id: String(pool.id) },
+            json: { ids: codes.map((code) => code.id) },
+          }),
+        ),
+      );
+    } catch (e) {
+      setError(toMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Dialog title={t('manage.bulkDelete')} onClose={onClose} locked={busy}>
+      <p>{t('manage.bulkDeleteConfirm', { count: codes.length })}</p>
+      <ul className="delete-codes-list">
+        {codes.map((code) => (
+          <li key={code.id}>
+            <code>{code.code}</code>
+          </li>
+        ))}
+      </ul>
+      <p className="field-help">{t('manage.bulkDeleteNote')}</p>
       <Notice>{error}</Notice>
       <div className="dialog-actions">
         <button className="button secondary" autoFocus disabled={busy} onClick={onClose}>

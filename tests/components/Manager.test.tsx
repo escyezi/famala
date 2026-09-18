@@ -1,5 +1,5 @@
 import type { ApiResponses } from './helpers.ts';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { Manager } from '../../src/react-app/components/Manager.tsx';
@@ -187,7 +187,7 @@ test('批量导入超过 500 条时禁止提交', async () => {
   expect(screen.getByRole('button', { name: '开始导入' })).toBeDisabled();
 });
 
-test('按每页条数翻页，切换条数或领取筛选回到第一页', async () => {
+test('按每页条数翻页，切换条数或使用状态筛选回到第一页', async () => {
   const row: ApiResponses['codes']['items'][number] = {
     id: 1,
     code: 'FIRST-PAGE',
@@ -227,9 +227,9 @@ test('按每页条数翻页，切换条数或领取筛选回到第一页', async
         page: 2,
         pageSize: 50,
       } satisfies ApiResponses['codes']),
-    'GET /api/manage/pools/1/codes?page=1&status=claimed&pageSize=50': () =>
+    'GET /api/manage/pools/1/codes?page=1&status=unused&pageSize=50': () =>
       json({
-        items: [{ ...row, code: 'CLAIMED-CODE', claimStatus: 'claimed' }],
+        items: [{ ...row, code: 'UNUSED-CODE', claimStatus: 'claimed', claimedAt: pool.createdAt }],
         total: 1,
         page: 1,
         pageSize: 50,
@@ -251,8 +251,8 @@ test('按每页条数翻页，切换条数或领取筛选回到第一页', async
   await user.click(screen.getByRole('button', { name: '下一页' }));
   expect(await screen.findByText('LAST-PAGE')).toBeVisible();
   expect(screen.getByRole('button', { name: '下一页' })).toBeDisabled();
-  await user.click(screen.getByRole('button', { name: '已领取' }));
-  expect(await screen.findByText('CLAIMED-CODE')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '未使用' }));
+  expect(await screen.findByText('UNUSED-CODE')).toBeVisible();
   expect(screen.queryByText('LAST-PAGE')).not.toBeInTheDocument();
   expect(screen.getByRole('combobox', { name: '每页条数' })).toHaveValue('50');
   expect(screen.getByRole('button', { name: '上一页' })).toBeDisabled();
@@ -334,3 +334,310 @@ test('码池已被其他页面删除时，再次删除也返回列表', async ()
   await user.click(screen.getByRole('button', { name: '确认删除' }));
   await waitFor(() => expect(onNavigate).toHaveBeenCalledExactlyOnceWith('/manage'));
 });
+
+const unclaimedCode: ApiResponses['codes']['items'][number] = {
+  id: 1,
+  code: 'AVAILABLE-CODE',
+  claimStatus: 'unclaimed',
+  claimedAt: null,
+  remark: null,
+  userMarkedUsed: false,
+  userMarkedUsedAt: null,
+  createdAt: pool.createdAt,
+};
+const unusedCode = {
+  ...unclaimedCode,
+  id: 2,
+  code: 'UNUSED-CODE',
+  claimStatus: 'claimed' as const,
+  claimedAt: pool.createdAt,
+};
+const usedCode = {
+  ...unusedCode,
+  id: 3,
+  code: 'USED-CODE',
+  userMarkedUsed: true,
+  userMarkedUsedAt: pool.createdAt + 3_600_000,
+};
+
+test('明细显示三种状态和使用时间，仅未领取可删除，三种筛选请求各自状态', async () => {
+  const codeRows = [unclaimedCode, unusedCode, usedCode];
+  const page = (items: typeof codeRows) =>
+    json({ items, total: items.length, page: 1, pageSize: 20 } satisfies ApiResponses['codes']);
+  mockApi({
+    ...baseRoutes,
+    'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () => page(codeRows),
+    'GET /api/manage/pools/1/codes?page=1&status=unclaimed&pageSize=20': () =>
+      page([unclaimedCode]),
+    'GET /api/manage/pools/1/codes?page=1&status=unused&pageSize=20': () => page([unusedCode]),
+    'GET /api/manage/pools/1/codes?page=1&status=used&pageSize=20': () => page([usedCode]),
+  });
+  const user = userEvent.setup();
+  renderManager('1');
+  await screen.findByText(unclaimedCode.code);
+  for (const [code, label] of [
+    [unclaimedCode, '未领取'],
+    [unusedCode, '未使用'],
+    [usedCode, '已使用'],
+  ] as const) {
+    const row = screen.getByText(code.code).closest('tr')!;
+    expect(within(row).getByText(label)).toBeVisible();
+    expect(within(row).queryByRole('button', { name: '删除兑换码' }) !== null).toBe(
+      code === unclaimedCode,
+    );
+  }
+  const usedRow = within(screen.getByText(usedCode.code).closest('tr')!);
+  const expectedTime = new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(usedCode.userMarkedUsedAt);
+  expect(usedRow.getByRole('cell', { name: expectedTime })).toBeVisible();
+  expect(screen.getByRole('columnheader', { name: '使用标记时间' })).toBeVisible();
+  for (const [label, code] of [
+    ['已使用', usedCode],
+    ['未使用', unusedCode],
+    ['未领取', unclaimedCode],
+  ] as const) {
+    await user.click(screen.getByRole('button', { name: label }));
+    await screen.findByText(code.code);
+    expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: label })).toHaveAttribute('aria-pressed', 'true');
+  }
+});
+
+test('删除兑换码可取消和重试，提交期间禁用操作，删除末页最后一条后刷新统计并退页', async () => {
+  const pending = deferred<Response>();
+  let removed = false;
+  const remove = vi
+    .fn()
+    .mockImplementationOnce(() => json({ code: 'SERVICE_UNAVAILABLE' }, 500))
+    .mockImplementationOnce(async () => {
+      const response = await pending.promise;
+      removed = true;
+      return response;
+    });
+  mockApi({
+    ...baseRoutes,
+    'GET /api/manage/pools': () =>
+      json({
+        items: [{ ...pool, total: removed ? 20 : 21, remaining: removed ? 20 : 21 }],
+      } satisfies ApiResponses['pools']),
+    'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () =>
+      json({
+        items: [{ ...unclaimedCode, id: 2, code: 'FIRST-PAGE' }],
+        total: removed ? 20 : 21,
+        page: 1,
+        pageSize: 20,
+      } satisfies ApiResponses['codes']),
+    'GET /api/manage/pools/1/codes?page=2&status=all&pageSize=20': () =>
+      json({
+        items: removed ? [] : [unclaimedCode],
+        total: removed ? 20 : 21,
+        page: 2,
+        pageSize: 20,
+      } satisfies ApiResponses['codes']),
+    'DELETE /api/manage/pools/1/codes/1': remove,
+  });
+  const user = userEvent.setup();
+  renderManager('1');
+  await screen.findByText('FIRST-PAGE');
+  await user.click(screen.getByRole('button', { name: '下一页' }));
+  await screen.findByText(unclaimedCode.code);
+  await user.click(screen.getByRole('button', { name: '删除兑换码' }));
+  expect(screen.getByRole('dialog')).toHaveTextContent(unclaimedCode.code);
+  fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(remove).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button', { name: '删除兑换码' }));
+  await user.click(screen.getByRole('button', { name: '确认删除' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('服务暂时不可用');
+  await user.dblClick(screen.getByRole('button', { name: '确认删除' }));
+  expect(remove).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole('button', { name: '正在删除…' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '取消' })).toBeDisabled();
+  // jsdom does not turn Escape into a native dialog cancel event.
+  fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }));
+  expect(screen.getByRole('dialog')).toBeVisible();
+  pending.resolve(json({ ok: true } satisfies ApiResponses['deleteCode']));
+  expect(await screen.findByText('FIRST-PAGE')).toBeVisible();
+  expect(screen.queryByText(unclaimedCode.code)).not.toBeInTheDocument();
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(screen.getByText('1 / 1')).toBeVisible();
+  await waitFor(() =>
+    expect(
+      within(screen.getByRole('region', { name: '码池统计' })).getByText('剩余').parentElement,
+    ).toHaveTextContent('20'),
+  );
+});
+
+test.each([false, true])(
+  '删除时处理领取冲突或已删除（已领取：%s），刷新列表且禁止误删',
+  async (claimed) => {
+    let changed = false;
+    const remove = vi.fn(() => {
+      changed = true;
+      return json(
+        { code: claimed ? 'CODE_ALREADY_CLAIMED' : 'CODE_NOT_FOUND' },
+        claimed ? 409 : 404,
+      );
+    });
+    mockApi({
+      ...baseRoutes,
+      'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () => {
+        const items = changed
+          ? claimed
+            ? [{ ...unclaimedCode, claimStatus: 'claimed' as const, claimedAt: pool.createdAt }]
+            : []
+          : [unclaimedCode];
+        return json({
+          items,
+          total: items.length,
+          page: 1,
+          pageSize: 20,
+        } satisfies ApiResponses['codes']);
+      },
+      'DELETE /api/manage/pools/1/codes/1': remove,
+    });
+    const user = userEvent.setup();
+    renderManager('1');
+    await user.click(await screen.findByRole('button', { name: '删除兑换码' }));
+    await user.click(screen.getByRole('button', { name: '确认删除' }));
+    if (claimed) {
+      expect(await screen.findByRole('alert')).toHaveTextContent('兑换码已被领取，无法删除');
+      expect(screen.getByRole('button', { name: '确认删除' })).toBeDisabled();
+      await waitFor(() =>
+        expect(within(screen.getByRole('table')).getByText('未使用')).toBeVisible(),
+      );
+      await user.click(screen.getByRole('button', { name: '取消' }));
+    } else {
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(await screen.findByText('暂无兑换码记录')).toBeVisible();
+    }
+    expect(screen.queryByRole('button', { name: '删除兑换码' })).not.toBeInTheDocument();
+    expect(remove).toHaveBeenCalledTimes(1);
+  },
+);
+
+test('批量选择仅在未领取页签出现，全选限定当前页，翻页、切换条数及刷新清空选择', async () => {
+  const rows = Array.from({ length: 21 }, (_, i) => ({
+    ...unclaimedCode,
+    id: i + 1,
+    code: `SELECT-${i + 1}`,
+  }));
+  const response = (page: number, size: number) =>
+    json({
+      items: rows.slice((page - 1) * size, page * size),
+      total: rows.length,
+      page,
+      pageSize: size,
+    } satisfies ApiResponses['codes']);
+  mockApi({
+    ...baseRoutes,
+    'GET /api/manage/pools/1/codes?page=1&status=unclaimed&pageSize=20': () => response(1, 20),
+    'GET /api/manage/pools/1/codes?page=2&status=unclaimed&pageSize=20': () => response(2, 20),
+    'GET /api/manage/pools/1/codes?page=1&status=unclaimed&pageSize=50': () => response(1, 50),
+  });
+  const user = userEvent.setup();
+  renderManager('1');
+  await screen.findByRole('button', { name: '未领取' });
+  expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '批量删除' })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: '未领取' }));
+  await screen.findByText('SELECT-1');
+  expect(screen.getByRole('button', { name: '批量删除' })).toBeDisabled();
+  await user.click(screen.getByRole('checkbox', { name: '选择兑换码 SELECT-1' }));
+  expect(screen.getByRole('checkbox', { name: '全选当前页' })).toBePartiallyChecked();
+  await user.click(screen.getByRole('checkbox', { name: '全选当前页' }));
+  expect(screen.getByText('已选 20 条 · 仅当前页')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '下一页' }));
+  await screen.findByText('SELECT-21');
+  expect(screen.getByRole('button', { name: '批量删除' })).toBeDisabled();
+  await user.click(screen.getByRole('checkbox', { name: '全选当前页' }));
+  expect(screen.getByText('已选 1 条 · 仅当前页')).toBeVisible();
+  await user.selectOptions(screen.getByRole('combobox', { name: '每页条数' }), '50');
+  await screen.findByText('SELECT-1');
+  expect(screen.getByRole('button', { name: '批量删除' })).toBeDisabled();
+  await user.click(screen.getByRole('checkbox', { name: '全选当前页' }));
+  expect(screen.getByText('已选 21 条 · 仅当前页')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '刷新数据' }));
+  await screen.findByText('SELECT-1');
+  expect(screen.getByRole('button', { name: '批量删除' })).toBeDisabled();
+  await user.click(screen.getByRole('checkbox', { name: '全选当前页' }));
+  await user.click(screen.getByRole('checkbox', { name: '全选当前页' }));
+  expect(screen.getByRole('button', { name: '批量删除' })).toBeDisabled();
+});
+
+test.each([0, 1])(
+  '批量删除确认、失败重试和防重复提交，成功后展示删除及跳过数（跳过 %s）',
+  async (skipped) => {
+    const second = { ...unclaimedCode, id: 2, code: 'BULK-SECOND' };
+    let completed = false;
+    const pending = deferred<Response>();
+    const remove = vi
+      .fn()
+      .mockImplementationOnce(() => json({ code: 'SERVICE_UNAVAILABLE' }, 500))
+      .mockImplementationOnce(async () => {
+        const response = await pending.promise;
+        completed = true;
+        return response;
+      });
+    mockApi({
+      ...baseRoutes,
+      'GET /api/manage/pools': () =>
+        json({
+          items: [
+            {
+              ...pool,
+              total: completed ? skipped : 2,
+              remaining: completed ? 0 : 2,
+              claimed: completed ? skipped : 0,
+            },
+          ],
+        } satisfies ApiResponses['pools']),
+      'GET /api/manage/pools/1/codes?page=1&status=unclaimed&pageSize=20': () =>
+        json({
+          items: completed ? [] : [unclaimedCode, second],
+          total: completed ? 0 : 2,
+          page: 1,
+          pageSize: 20,
+        } satisfies ApiResponses['codes']),
+      'DELETE /api/manage/pools/1/codes': remove,
+    });
+    const user = userEvent.setup();
+    renderManager('1');
+    await user.click(await screen.findByRole('button', { name: '未领取' }));
+    await screen.findByText(unclaimedCode.code);
+    await user.click(screen.getByRole('checkbox', { name: '全选当前页' }));
+    await user.click(screen.getByRole('button', { name: '批量删除' }));
+    let dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(unclaimedCode.code)).toBeVisible();
+    expect(within(dialog).getByText(second.code)).toBeVisible();
+    expect(dialog).toHaveTextContent('确认删除选中的 2 个兑换码');
+    await user.click(within(dialog).getByRole('button', { name: '取消' }));
+    expect(remove).not.toHaveBeenCalled();
+    expect(screen.getByText('已选 2 条 · 仅当前页')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '批量删除' }));
+    dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: '确认删除' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('服务暂时不可用');
+    await user.dblClick(within(dialog).getByRole('button', { name: '确认删除' }));
+    expect(remove).toHaveBeenCalledTimes(2);
+    expect(remove).toHaveBeenLastCalledWith(
+      expect.objectContaining({ body: JSON.stringify({ ids: [1, 2] }) }),
+    );
+    expect(within(dialog).getByRole('button', { name: '正在删除…' })).toBeDisabled();
+    fireEvent(dialog, new Event('cancel', { cancelable: true }));
+    expect(dialog).toBeVisible();
+    pending.resolve(json({ deleted: 2 - skipped, skipped } satisfies ApiResponses['deleteCodes']));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(await screen.findByText('暂无兑换码记录')).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      skipped ? '已删除 1 个兑换码，跳过 1 个（已领取或不存在）。' : '已删除 2 个兑换码。',
+    );
+    expect(screen.getByRole('button', { name: '批量删除' })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: '全选当前页' })).toBeDisabled();
+  },
+);

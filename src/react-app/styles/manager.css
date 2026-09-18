@@ -567,13 +567,39 @@
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
-.used-label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: #699565;
-  font-size: 10px;
+.delete-code-value {
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+.code-actions-cell {
+  width: 64px;
+  text-align: center;
   white-space: nowrap;
+}
+.code-delete-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-muted);
+  vertical-align: middle;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+.code-delete-button:hover,
+.code-delete-button:focus-visible {
+  color: #a23d35;
+  background: #fff0ed;
+}
+.code-delete-button:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
 .code-input {
   font-family: ui-monospace, monospace;
@@ -730,4 +756,53 @@
   .pool-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+.bulk-code-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  background: #f3f7f2;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.bulk-delete-button:not(:disabled):hover {
+  color: #a23d35;
+  border-color: #ebc9c4;
+  background: #fff7f5;
+}
+.code-select-cell {
+  width: 40px;
+  text-align: center;
+}
+.code-select-cell input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  vertical-align: middle;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+.code-select-cell input:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 3px;
+}
+.code-selected td {
+  background: #f3f8f2;
+}
+.delete-codes-list {
+  max-height: 220px;
+  overflow: auto;
+  list-style: none;
+  padding: 12px;
+  margin: 12px 0;
+  background: var(--color-page);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
 }

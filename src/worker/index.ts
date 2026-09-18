@@ -3,7 +3,7 @@ import { ApiException, validationError } from './errors.ts';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
-import { and, count, desc, eq, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { codePools, distributorSessions, distributorSpaces, redemptionCodes } from './db/schema.ts';
 import {
@@ -22,6 +22,7 @@ import {
   poolNameInput,
   poolStatusInput,
   importInput,
+  deleteCodesInput,
   codesQuery,
   claimKeyInput,
   claimInput,
@@ -273,6 +274,12 @@ const routes = app
       filter === 'claimed' || filter === 'unclaimed'
         ? eq(redemptionCodes.claimStatus, filter)
         : undefined,
+      filter === 'unused' || filter === 'used'
+        ? and(
+            eq(redemptionCodes.claimStatus, 'claimed'),
+            eq(redemptionCodes.userMarkedUsed, filter === 'used'),
+          )
+        : undefined,
     );
     const db = drizzle(c.env.DB);
     const [items, totals] = await db.batch([
@@ -295,6 +302,45 @@ const routes = app
       db.select({ total: count() }).from(redemptionCodes).where(where),
     ]);
     return c.json({ items, total: totals[0].total, page, pageSize }, 200);
+  })
+  .delete('/api/manage/pools/:id/codes', deleteCodesInput, async (c) => {
+    const pool = await ownedPool(c);
+    const { ids } = c.req.valid('json');
+    // One atomic statement protects codes claimed after selection and scopes every ID to this pool.
+    const deleted = await drizzle(c.env.DB)
+      .delete(redemptionCodes)
+      .where(
+        and(
+          eq(redemptionCodes.poolId, pool.id),
+          inArray(redemptionCodes.id, ids),
+          eq(redemptionCodes.claimStatus, 'unclaimed'),
+        ),
+      )
+      .returning({ id: redemptionCodes.id });
+    return c.json({ deleted: deleted.length, skipped: ids.length - deleted.length }, 200);
+  })
+  .delete('/api/manage/pools/:id/codes/:codeId', async (c) => {
+    const pool = await ownedPool(c);
+    const rawId = c.req.param('codeId');
+    const codeId = Number(rawId);
+    if (!/^[1-9]\d*$/.test(rawId) || !Number.isSafeInteger(codeId))
+      return c.json(errorBody('CODE_NOT_FOUND'), 404);
+    const db = drizzle(c.env.DB);
+    const where = and(eq(redemptionCodes.poolId, pool.id), eq(redemptionCodes.id, codeId));
+    // Check the claim state in the DELETE itself, so a concurrent claim cannot be removed.
+    const deleted = await db
+      .delete(redemptionCodes)
+      .where(and(where, eq(redemptionCodes.claimStatus, 'unclaimed')))
+      .returning({ id: redemptionCodes.id });
+    if (deleted.length) return c.json({ ok: true }, 200);
+    const existing = await db
+      .select({ id: redemptionCodes.id })
+      .from(redemptionCodes)
+      .where(where)
+      .get();
+    return existing
+      ? c.json(errorBody('CODE_ALREADY_CLAIMED'), 409)
+      : c.json(errorBody('CODE_NOT_FOUND'), 404);
   })
   .post('/api/claim/validate', claimKeyInput, async (c) => {
     const data = c.req.valid('json');

@@ -291,9 +291,14 @@
   background: #f3f5f2;
   color: #788675;
 }
-.status.claimed {
+.status.claimed,
+.status.used {
   background: #eef6ec;
   color: #4b8959;
+}
+.status.unused {
+  color: #a28a59;
+  background: #f5f0e5;
 }
 .status.stopped {
   background: #f5f0e5;

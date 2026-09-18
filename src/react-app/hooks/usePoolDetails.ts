@@ -27,6 +27,12 @@ export function usePoolDetails(pool: Pool, onRefresh: () => void) {
     )
       .then((result) => {
         if (controller.signal.aborted) return;
+        const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize));
+        if (page > lastPage) {
+          setCodes(null);
+          setQuery((current) => ({ ...current, page: lastPage }));
+          return;
+        }
         setCodes(result);
         setCodesError(null);
       })

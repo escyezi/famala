@@ -8,6 +8,7 @@ export type Session = InferResponseType<Api['manage']['session']['$get'], 200>;
 export type Pool = InferResponseType<Api['manage']['pools']['$get'], 200>['items'][number];
 export type CodePage = InferResponseType<PoolApi['codes']['$get'], 200>;
 export type CodeRow = CodePage['items'][number];
+export type DeleteCodesResult = InferResponseType<PoolApi['codes']['$delete'], 200>;
 export type CodeFilter = NonNullable<InferRequestType<PoolApi['codes']['$get']>['query']['status']>;
 export type CodePageSize = NonNullable<
   InferRequestType<PoolApi['codes']['$get']>['query']['pageSize']

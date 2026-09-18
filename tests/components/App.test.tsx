@@ -119,7 +119,7 @@ test('前进后退和切换码池重置详情状态，已离开的请求返回 4
     'GET /api/manage/pools': () => json({ items: [pool, second] } satisfies ApiResponses['pools']),
     'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () =>
       json({ items: [row], total: 1, page: 1, pageSize: 20 } satisfies ApiResponses['codes']),
-    'GET /api/manage/pools/1/codes?page=1&status=claimed&pageSize=20': (init) => {
+    'GET /api/manage/pools/1/codes?page=1&status=unused&pageSize=20': (init) => {
       oldSignal = init.signal;
       return oldCodes.promise;
     },
@@ -135,7 +135,7 @@ test('前进后退和切换码池重置详情状态，已离开的请求返回 4
   render(<App />);
   await user.click(await screen.findByRole('link', { name: new RegExp(pool.name) }));
   await screen.findByText('POOL-ONE');
-  await user.click(screen.getByRole('button', { name: '已领取' }));
+  await user.click(screen.getByRole('button', { name: '未使用' }));
   await user.click(await screen.findByRole('button', { name: '更多' }));
   await user.click(screen.getByRole('button', { name: '修改名称' }));
   act(() => history.back());

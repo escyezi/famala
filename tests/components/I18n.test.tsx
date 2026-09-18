@@ -231,19 +231,19 @@ test('component reactivity: pagination and filter survive language changes witho
   const fetch = mockApi({
     'GET /api/manage/pools': () => json({ items: [pool] }),
     'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () => rows(1),
-    'GET /api/manage/pools/1/codes?page=1&status=claimed&pageSize=20': () => rows(1),
-    'GET /api/manage/pools/1/codes?page=2&status=claimed&pageSize=20': () => rows(2),
+    'GET /api/manage/pools/1/codes?page=1&status=used&pageSize=20': () => rows(1),
+    'GET /api/manage/pools/1/codes?page=2&status=used&pageSize=20': () => rows(2),
   });
   const user = userEvent.setup();
   render(<Manager poolId="1" onNavigate={vi.fn()} />);
-  await user.click(await screen.findByRole('button', { name: '已领取' }));
+  await user.click(await screen.findByRole('button', { name: '已使用' }));
   await waitFor(() => expect(screen.getByRole('button', { name: '下一页' })).toBeEnabled());
   await user.click(screen.getByRole('button', { name: '下一页' }));
   expect(await screen.findByText('2 / 3')).toBeVisible();
   const calls = fetch.mock.calls.length;
   await english();
   expect(screen.getByText('2 / 3')).toBeVisible();
-  expect(screen.getByRole('button', { name: 'Claimed' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: 'Used' })).toHaveAttribute('aria-pressed', 'true');
   expect(fetch).toHaveBeenCalledTimes(calls);
 });
 

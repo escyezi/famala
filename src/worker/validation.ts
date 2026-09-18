@@ -44,6 +44,18 @@ export const importInput = validator('json', (value: unknown, c) => {
   return { text };
 });
 
+export const deleteCodesInput = validator('json', (value: unknown, c) => {
+  const { ids } = object(value);
+  if (
+    !Array.isArray(ids) ||
+    ids.length === 0 ||
+    ids.length > 50 ||
+    !ids.every((id): id is number => typeof id === 'number' && Number.isSafeInteger(id) && id > 0)
+  )
+    return c.json(errorBody('INVALID_CODE_SELECTION'), 400);
+  return { ids: [...new Set(ids)] };
+});
+
 export const claimKeyInput = validator('json', (value: unknown) => ({
   claimKey: claimKey(object(value).claimKey),
 }));
@@ -78,7 +90,8 @@ export const usedInput = validator('json', (value: unknown, c) => {
   return { claimKey: key, code: data.code };
 });
 
-type CodeFilter = 'all' | 'claimed' | 'unclaimed';
+// Keep claimed for older clients; the manager uses the three disjoint states.
+type CodeFilter = 'all' | 'claimed' | 'unclaimed' | 'unused' | 'used';
 // Hono's default query input allows arbitrary strings/arrays. Narrow the public
 // RPC input to the values this validator actually accepts; keep parsed numbers
 // on the server side only.
@@ -102,7 +115,11 @@ export const codesQuery: MiddlewareHandler<
   const status = query.status?.[0] || 'all';
   if (
     (query.status && query.status.length !== 1) ||
-    (status !== 'all' && status !== 'claimed' && status !== 'unclaimed')
+    (status !== 'all' &&
+      status !== 'claimed' &&
+      status !== 'unclaimed' &&
+      status !== 'unused' &&
+      status !== 'used')
   )
     throw new ApiException(400, 'INVALID_FILTER');
   const size = query.pageSize?.[0] ?? '50';

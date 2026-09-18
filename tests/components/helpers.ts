@@ -18,6 +18,8 @@ export type ApiResponses = {
   createPool: InferResponseType<Api['manage']['pools']['$post'], 201>;
   renamePool: InferResponseType<PoolApi['name']['$post'], 200>;
   deletePool: InferResponseType<PoolApi['$delete'], 200>;
+  deleteCodes: InferResponseType<PoolApi['codes']['$delete'], 200>;
+  deleteCode: InferResponseType<PoolApi['codes'][':codeId']['$delete'], 200>;
   poolStatus: InferResponseType<PoolApi['status']['$post'], 200>;
   importCodes: InferResponseType<PoolApi['import']['$post'], 200>;
   codes: InferResponseType<PoolApi['codes']['$get'], 200>;

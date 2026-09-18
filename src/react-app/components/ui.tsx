@@ -19,6 +19,7 @@ export function Icon({
     | 'history'
     | 'refresh'
     | 'logout'
+    | 'trash'
     | 'close'
     | 'box';
   size?: number;
@@ -62,6 +63,7 @@ export function Icon({
       <path d="M20 11a8 8 0 0 0-13.66-4.66L4 9m0-5v5h5M4 13a8 8 0 0 0 13.66 4.66L20 15m0 5v-5h-5" />
     ),
     logout: <path d="M9 3H4v18h5m-1-9h13m-5-5 5 5-5 5" />,
+    trash: <path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6m4-6v6" />,
     close: <path d="m6 6 12 12M6 18 18 6" />,
     box: (
       <>
