@@ -4,54 +4,16 @@ import { toMessage } from '../../shared/messages.ts';
 import type { Message } from '../../shared/messages.ts';
 import { useEffect, useRef, useState } from 'react';
 import { api, rpc, ApiError } from '../api.ts';
-import { readRecords, saveClaim, saveUsed, subscribeRecords } from '../storage.ts';
+import { readRecords, saveClaim, subscribeRecords } from '../storage.ts';
 import { normalizeRemark, codePointLength } from '../../shared/contracts.ts';
-import type { ClaimRecord, UsedResult } from '../../shared/contracts.ts';
+import type { ClaimRecord } from '../../shared/contracts.ts';
 import { CopyButton, Dialog, Icon, Notice } from './ui.tsx';
 import type { PublicConfig, PublicPool } from '../../shared/api-types.ts';
 import { Turnstile } from './Turnstile.tsx';
 
-function RecordCard({
-  record,
-  onMarked,
-  unavailable = false,
-}: {
-  record: ClaimRecord;
-  onMarked?: (record: ClaimRecord) => void;
-  unavailable?: boolean;
-}) {
+function RecordCard({ record }: { record: ClaimRecord }) {
   const { dateTime } = useFormat();
   const { t } = useTranslation();
-  const [used, setUsed] = useState<UsedResult | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<Message | null>(null);
-  const [warning, setWarning] = useState<Message | null>(null);
-  const [missing, setMissing] = useState(false);
-  const cannotMark = unavailable || missing;
-  const marked = record.userMarkedUsed || used !== null;
-  async function mark() {
-    if (busy || marked || cannotMark) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await api(
-        rpc.api.claim.used.$post({
-          json: {
-            claimKey: record.claimKey,
-            code: record.code,
-          },
-        }),
-      );
-      setUsed(result);
-      onMarked?.({ ...record, ...result });
-      setWarning(await saveUsed(record, result));
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 404) setMissing(true);
-      else setError(toMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  }
   return (
     <article className="record-card">
       <div className="record-head">
@@ -66,30 +28,6 @@ function RecordCard({
       <div className="claimed-code">
         <code>{record.code}</code>
         <CopyButton value={record.code} label={t('common.copyCode')} />
-      </div>
-      <Notice>{error}</Notice>
-      <Notice kind="info">{warning}</Notice>
-      {cannotMark && <Notice kind="info">{t('errors.RECORD_NOT_FOUND')}</Notice>}
-      <div className="record-footer">
-        <button
-          className={`button ${marked ? 'secondary' : 'primary'} small`}
-          onClick={mark}
-          disabled={marked || busy || cannotMark}
-        >
-          <Icon name="check" size={16} />
-          {marked
-            ? t('common.markedUsed')
-            : cannotMark
-              ? t('claim.cannotMark')
-              : busy
-                ? t('claim.marking')
-                : t('claim.markUsed')}
-        </button>
-        {marked && (
-          <span className="muted small-text">
-            {dateTime(used?.userMarkedUsedAt ?? record.userMarkedUsedAt)}
-          </span>
-        )}
       </div>
     </article>
   );
@@ -289,12 +227,7 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
       <Notice>{error}</Notice>
       <Notice kind="info">{warning || snapshot.warning}</Notice>
       {record ? (
-        <RecordCard
-          key={`${record.claimKey}:${record.code}`}
-          record={record}
-          onMarked={setResult}
-          unavailable={poolMissing}
-        />
+        <RecordCard key={`${record.claimKey}:${record.code}`} record={record} />
       ) : !loaded ? (
         <div className="empty-state">{t('claim.loading')}</div>
       ) : !pool ? (

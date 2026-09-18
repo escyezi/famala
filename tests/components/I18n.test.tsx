@@ -228,7 +228,8 @@ test('component reactivity: import results and row reasons translate without los
 test('component reactivity: pagination and filter survive language changes without requests', async () => {
   const rows = (page: number) =>
     json({
-      counts: { all: 45, unclaimed: 0, unused: 0, used: 45 },
+      counts: { all: 45, unclaimed: 0, claimed: 0, redeemed: 45 },
+      summary: { total: 45, remaining: 0, claimed: 0 + 45, redeemed: 45 },
       items: [],
       page,
       pageSize: 20,
@@ -237,19 +238,19 @@ test('component reactivity: pagination and filter survive language changes witho
   const fetch = mockApi({
     'GET /api/manage/pools': () => json({ items: [pool] }),
     'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () => rows(1),
-    'GET /api/manage/pools/1/codes?page=1&status=used&pageSize=20': () => rows(1),
-    'GET /api/manage/pools/1/codes?page=2&status=used&pageSize=20': () => rows(2),
+    'GET /api/manage/pools/1/codes?page=1&status=redeemed&pageSize=20': () => rows(1),
+    'GET /api/manage/pools/1/codes?page=2&status=redeemed&pageSize=20': () => rows(2),
   });
   const user = userEvent.setup();
   render(<Manager poolId="1" onNavigate={vi.fn()} />);
-  await user.click(await screen.findByRole('button', { name: '已使用' }));
+  await user.click(await screen.findByRole('button', { name: '已兑换' }));
   await waitFor(() => expect(screen.getByRole('button', { name: '下一页' })).toBeEnabled());
   await user.click(screen.getByRole('button', { name: '下一页' }));
   expect(await screen.findByText('2 / 3')).toBeVisible();
   const calls = fetch.mock.calls.length;
   await english();
   expect(screen.getByText('2 / 3')).toBeVisible();
-  expect(screen.getByRole('button', { name: 'Used' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: 'Redeemed' })).toHaveAttribute('aria-pressed', 'true');
   expect(fetch).toHaveBeenCalledTimes(calls);
 });
 
@@ -338,14 +339,11 @@ test('component reactivity: language switch during claim defers widget recreatio
   expect(claim).toHaveBeenCalledOnce();
 });
 
-test('English claim and historical usage marking retain original user data', async () => {
+test('English claims and local history retain original user data', async () => {
   await english();
-  const usedAt = claimRecord.claimedAt + 60000;
   mockApi({
     ...publicRoutes,
     'POST /api/claim': () => json(claimRecord),
-    'POST /api/claim/used': () =>
-      json({ userMarkedUsed: true, userMarkedUsedAt: usedAt } satisfies ApiResponses['markUsed']),
   });
   const widget = mockTurnstile();
   const user = userEvent.setup();
@@ -361,12 +359,9 @@ test('English claim and historical usage marking retain original user data', asy
   view.unmount();
   await english();
   render(<HistoryDialog onClose={vi.fn()} />);
-  await user.click(screen.getByRole('button', { name: 'Mark as used' }));
-  expect(await screen.findByRole('button', { name: 'Marked as used' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: 'Mark as used' })).not.toBeInTheDocument();
   expect(screen.getByText(claimRecord.poolName)).toBeVisible();
-  await waitFor(() =>
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)[0].userMarkedUsedAt).toBe(usedAt),
-  );
+  expect(screen.getByText(claimRecord.code)).toBeVisible();
 });
 
 function DateExample() {

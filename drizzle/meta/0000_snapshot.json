@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "df8d2ea1-725e-4938-890d-610538ba2220",
+  "id": "79a31f14-606d-424d-9bfe-b9bc964b51a2",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "code_pools": {
@@ -26,6 +26,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "claim_key": {
@@ -252,8 +259,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "claim_status": {
-          "name": "claim_status",
+        "status": {
+          "name": "status",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -274,16 +281,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "user_marked_used": {
-          "name": "user_marked_used",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
-        "user_marked_used_at": {
-          "name": "user_marked_used_at",
+        "redeemed_marked_at": {
+          "name": "redeemed_marked_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
@@ -310,7 +309,7 @@
           "name": "codes_pool_status_idx",
           "columns": [
             "pool_id",
-            "claim_status"
+            "status"
           ],
           "isUnique": false
         }
@@ -341,13 +340,17 @@
           "name": "remark_length_check",
           "value": "\"redemption_codes\".\"remark\" IS NULL OR length(\"redemption_codes\".\"remark\") <= 500"
         },
+        "code_status_check": {
+          "name": "code_status_check",
+          "value": "\"redemption_codes\".\"status\" IN ('unclaimed', 'claimed', 'redeemed')"
+        },
         "claim_state_check": {
           "name": "claim_state_check",
-          "value": "(\"redemption_codes\".\"claim_status\" = 'unclaimed' AND \"redemption_codes\".\"claimed_at\" IS NULL AND \"redemption_codes\".\"remark\" IS NULL) OR (\"redemption_codes\".\"claim_status\" = 'claimed' AND \"redemption_codes\".\"claimed_at\" IS NOT NULL)"
+          "value": "(\"redemption_codes\".\"status\" != 'unclaimed' OR \"redemption_codes\".\"claimed_at\" IS NULL) AND (\"redemption_codes\".\"status\" != 'claimed' OR \"redemption_codes\".\"claimed_at\" IS NOT NULL) AND (\"redemption_codes\".\"claimed_at\" IS NOT NULL OR \"redemption_codes\".\"remark\" IS NULL)"
         },
-        "used_state_check": {
-          "name": "used_state_check",
-          "value": "(\"redemption_codes\".\"user_marked_used\" = 0 AND \"redemption_codes\".\"user_marked_used_at\" IS NULL) OR (\"redemption_codes\".\"user_marked_used\" = 1 AND \"redemption_codes\".\"user_marked_used_at\" IS NOT NULL AND \"redemption_codes\".\"claim_status\" = 'claimed')"
+        "redeemed_state_check": {
+          "name": "redeemed_state_check",
+          "value": "(\"redemption_codes\".\"status\" = 'redeemed' AND \"redemption_codes\".\"redeemed_marked_at\" IS NOT NULL) OR (\"redemption_codes\".\"status\" != 'redeemed' AND \"redemption_codes\".\"redeemed_marked_at\" IS NULL)"
         }
       }
     }

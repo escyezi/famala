@@ -457,10 +457,6 @@
   font-size: 11px;
   margin-top: 4px;
 }
-.pool-refresh {
-  flex-shrink: 0;
-  margin-top: 3px;
-}
 .refresh-button {
   width: 36px;
   height: 36px;
@@ -513,19 +509,10 @@
 }
 .pool-overview-tools .button {
   white-space: nowrap;
+  height: 36px;
 }
 .pool-overview-tools .pool-main-action {
   width: 128px;
-  height: 36px;
-}
-.pool-overview-tools .pool-key-toggle {
-  width: 36px;
-  height: 36px;
-  padding: 0;
-}
-.pool-key-toggle[aria-expanded='true'] {
-  background: #edf2e8;
-  border-color: var(--color-primary);
 }
 .share-key {
   display: flex;
@@ -1039,16 +1026,75 @@
   text-align: center;
 }
 .code-select-cell input[type='checkbox'] {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
   width: 16px;
   height: 16px;
   margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  box-shadow: none;
   vertical-align: middle;
-  accent-color: var(--color-primary);
   cursor: pointer;
+}
+.code-select-cell input::before,
+.code-select-cell input::after {
+  content: '';
+  box-sizing: border-box;
+  grid-area: 1 / 1;
+  place-self: center;
+}
+.code-select-cell input::before {
+  width: 16px;
+  height: 16px;
+  border: 1px solid #9aaa9b;
+  border-radius: 3px;
+  background: var(--color-surface);
+}
+.code-select-cell input:hover:not(:disabled):not(:checked):not(:indeterminate)::before {
+  border-color: var(--color-primary);
+  background: #f3f8f2;
+}
+.code-select-cell input:checked::before,
+.code-select-cell input:indeterminate::before {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+}
+.code-select-cell input:checked::after {
+  width: 5px;
+  height: 9px;
+  margin-top: -2px;
+  border: solid var(--color-surface);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.code-select-cell input:indeterminate::after {
+  width: 8px;
+  height: 2px;
+  margin: 0;
+  border: 0;
+  background: var(--color-surface);
+  transform: none;
+}
+.code-select-cell input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .code-select-cell input:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 3px;
+}
+@media (forced-colors: active) {
+  .code-select-cell input[type='checkbox'] {
+    appearance: auto;
+  }
+  .code-select-cell input::before,
+  .code-select-cell input::after {
+    content: none;
+  }
 }
 .code-selected td {
   background: #f3f8f2;

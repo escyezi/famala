@@ -120,11 +120,6 @@
   user-select: all;
   color: #466a36;
 }
-.record-footer {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
 .record-card > .field-help {
   margin-top: 17px;
 }

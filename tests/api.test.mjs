@@ -95,6 +95,8 @@ async function pool(cookie, name = crypto.randomUUID()) {
   return listing.body.items.find((p) => p.id === response.body.id);
 }
 const imported = (p, cookie, text) => request(`/api/manage/pools/${p.id}/import`, { text }, cookie);
+const markRedeemed = (p, cookie, text, bindings = env) =>
+  request(`/api/manage/pools/${p.id}/redeemed/import`, { text }, cookie, bindings);
 const deleted = (p, cookie) => request(`/api/manage/pools/${p.id}`, {}, cookie, env, {}, 'DELETE');
 const claim = (p, overrides = {}, bindings = env) =>
   request(
@@ -468,7 +470,7 @@ test('concurrent duplicate imports never insert a duplicate code', async () => {
   );
 });
 
-test('concurrent claims allocate unique codes; only claimed codes can be marked, idempotently', async () => {
+test('concurrent claims allocate unique codes; recipient marking endpoint is removed', async () => {
   const owner = await space();
   const p = await pool(owner.cookie);
   await imported(
@@ -498,17 +500,6 @@ test('concurrent claims allocate unique codes; only claimed codes can be marked,
   );
   assert.equal(listing.body.total, 12);
   assert.ok(listing.body.items.every((r) => r.remark === '领取备注'));
-  const record = successes[0].body;
-  const marked = await request('/api/claim/used', { claimKey: p.claimKey, code: record.code });
-  const repeated = await request('/api/claim/used', { claimKey: p.claimKey, code: record.code });
-  assert.equal(marked.status, 200);
-  assert.deepEqual(marked.body, repeated.body);
-  assert.equal(marked.body.userMarkedUsed, true);
-  const p2 = await pool(owner.cookie);
-  assert.equal(
-    (await request('/api/claim/used', { claimKey: p2.claimKey, code: record.code })).status,
-    404,
-  );
 });
 
 test('stopped pool validates, rejects new claims, allows marking and append; resume preserves inventory', async () => {
@@ -523,10 +514,7 @@ test('stopped pool validates, rejects new claims, allows marking and append; res
     'stopped',
   );
   assert.equal((await claim(p)).body.code, 'POOL_STOPPED');
-  assert.equal(
-    (await request('/api/claim/used', { claimKey: p.claimKey, code: first.body.code })).status,
-    200,
-  );
+  assert.equal((await markRedeemed(p, owner.cookie, first.body.code)).status, 200);
   await imported(p, owner.cookie, 'STOP-3');
   assert.equal((await claim(p)).body.code, 'POOL_STOPPED');
   await request(`/api/manage/pools/${p.id}/status`, { status: 'active' }, owner.cookie);
@@ -634,7 +622,7 @@ test('renaming preserves claims and sharing keys; duplicate and concurrent names
   const other = await pool(owner.cookie, '已占用名称');
   await imported(p, owner.cookie, 'RENAME-1\nRENAME-2');
   const record = await claim(p);
-  await request('/api/claim/used', { claimKey: p.claimKey, code: record.body.code });
+  await markRedeemed(p, owner.cookie, record.body.code);
   await request(`/api/manage/pools/${p.id}/status`, { status: 'stopped' }, owner.cookie);
   const before = (await request(`/api/manage/pools/${p.id}/codes`, undefined, owner.cookie)).body;
   const rename = (id, name) => request(`/api/manage/pools/${id}/name`, { name }, owner.cookie);
@@ -717,7 +705,7 @@ test('RPC validators reject untyped callers with invalid body and query fields',
     );
   assert.equal((await request('/api/login', { key: 42 })).status, 401);
   assert.equal((await request('/api/claim/validate', { claimKey: 42 })).status, 404);
-  assert.equal((await request('/api/claim/used', { claimKey: p.claimKey, code: 42 })).status, 400);
+  assert.equal((await request('/api/claim/used', { claimKey: p.claimKey, code: 42 })).status, 404);
   assert.equal((await claim(p, { turnstileToken: 42 })).status, 400);
   assert.equal(verificationCalls, 0);
 });
@@ -788,13 +776,13 @@ test('controlled errors expose only stable codes and parameters', async () => {
   assert.deepEqual(unavailable.body, { code: 'SERVICE_UNAVAILABLE' });
 });
 
-test('code filters partition inventory into unclaimed, unused and used with matching page totals', async () => {
+test('code filters partition inventory into unclaimed, claimed and redeemed with matching page totals', async () => {
   const owner = await space();
   const p = await pool(owner.cookie);
   await imported(p, owner.cookie, Array.from({ length: 25 }, (_, i) => `STATE-${i}`).join('\n'));
   const first = await claim(p);
   const second = await claim(p);
-  await request('/api/claim/used', { claimKey: p.claimKey, code: first.body.code });
+  await markRedeemed(p, owner.cookie, first.body.code);
   const list = async (status, page = 1) => {
     const response = await request(
       `/api/manage/pools/${p.id}/codes?status=${status}&page=${page}&pageSize=20`,
@@ -802,31 +790,37 @@ test('code filters partition inventory into unclaimed, unused and used with matc
       owner.cookie,
     );
     assert.equal(response.status, 200);
-    assert.deepEqual(response.body.counts, { all: 25, unclaimed: 23, unused: 1, used: 1 });
+    assert.deepEqual(response.body.counts, { all: 25, unclaimed: 23, claimed: 1, redeemed: 1 });
     return response.body;
   };
-  const unused = await list('unused');
-  assert.equal(unused.total, 1);
-  assert.equal(unused.items[0].code, second.body.code);
-  const used = await list('used');
-  assert.equal(used.total, 1);
-  assert.equal(used.items[0].code, first.body.code);
-  assert.ok(used.items[0].userMarkedUsedAt);
+  const claimed = await list('claimed');
+  assert.equal(claimed.total, 1);
+  assert.equal(claimed.items[0].code, second.body.code);
+  const redeemed = await list('redeemed');
+  assert.equal(redeemed.total, 1);
+  assert.equal(redeemed.items[0].code, first.body.code);
+  assert.ok(redeemed.items[0].redeemedMarkedAt);
   const unclaimed = await list('unclaimed');
   assert.equal(unclaimed.total, 23);
   assert.equal(unclaimed.items.length, 20);
-  assert.ok(unclaimed.items.every((row) => row.claimStatus === 'unclaimed' && !row.userMarkedUsed));
+  assert.ok(unclaimed.items.every((row) => row.status === 'unclaimed'));
   const last = await list('unclaimed', 2);
   assert.equal(last.total, 23);
   assert.equal(last.items.length, 3);
   assert.equal((await list('all')).total, 25);
-  // Backward compatibility: claimed includes both unused and used codes.
-  const legacy = await list('claimed');
-  assert.equal(legacy.total, 2);
-  assert.deepEqual(
-    new Set(legacy.items.map((row) => row.code)),
-    new Set([first.body.code, second.body.code]),
-  );
+  assert.deepEqual((await list('all')).summary, {
+    total: 25,
+    remaining: 23,
+    claimed: 2,
+    redeemed: 1,
+  });
+  for (const status of ['unused', 'used']) {
+    assert.equal(
+      (await request(`/api/manage/pools/${p.id}/codes?status=${status}`, undefined, owner.cookie))
+        .status,
+      400,
+    );
+  }
 });
 
 test('individual deletion requires ownership and unclaimed state and updates available inventory', async () => {
@@ -835,12 +829,12 @@ test('individual deletion requires ownership and unclaimed state and updates ava
   const p = await pool(owner.cookie);
   const other = await pool(owner.cookie);
   await imported(p, owner.cookie, 'UNUSED\nUSED\nDELETE-ME');
-  const unused = await claim(p);
-  const used = await claim(p);
-  await request('/api/claim/used', { claimKey: p.claimKey, code: used.body.code });
+  const claimed = await claim(p);
+  const redeemed = await claim(p);
+  await markRedeemed(p, owner.cookie, redeemed.body.code);
   const rows = (await request(`/api/manage/pools/${p.id}/codes`, undefined, owner.cookie)).body
     .items;
-  const available = rows.find((row) => row.claimStatus === 'unclaimed');
+  const available = rows.find((row) => row.status === 'unclaimed');
   const remove = (poolId, codeId, cookie = owner.cookie) =>
     request(`/api/manage/pools/${poolId}/codes/${codeId}`, {}, cookie, env, {}, 'DELETE');
   assert.equal((await remove(p.id, available.id, '')).status, 401);
@@ -848,11 +842,11 @@ test('individual deletion requires ownership and unclaimed state and updates ava
   assert.equal((await remove(other.id, available.id)).status, 404);
   for (const id of ['0', '-1', '1.5', 'bad', '9007199254740992'])
     assert.equal((await remove(p.id, id)).status, 404);
-  for (const code of [unused.body.code, used.body.code]) {
+  for (const code of [claimed.body.code, redeemed.body.code]) {
     const row = rows.find((row) => row.code === code);
     const response = await remove(p.id, row.id);
     assert.equal(response.status, 409);
-    assert.equal(response.body.code, 'CODE_ALREADY_CLAIMED');
+    assert.equal(response.body.code, 'CODE_NOT_AVAILABLE');
   }
   assert.equal((await remove(p.id, available.id)).status, 200);
   assert.equal((await remove(p.id, available.id)).body.code, 'CODE_NOT_FOUND');
@@ -861,10 +855,7 @@ test('individual deletion requires ownership and unclaimed state and updates ava
   );
   assert.deepEqual([stats.total, stats.claimed, stats.remaining], [2, 2, 0]);
   assert.equal((await claim(p)).body.code, 'POOL_EMPTY');
-  assert.equal(
-    (await request('/api/claim/used', { claimKey: p.claimKey, code: unused.body.code })).status,
-    200,
-  );
+  assert.equal((await markRedeemed(p, owner.cookie, claimed.body.code)).status, 200);
 });
 
 test('individual deletion during Siteverify prevents a pending claim from issuing the removed code', async () => {
@@ -933,12 +924,12 @@ test('a code claimed after deletion starts is protected when the DELETE executes
   );
   assert.equal(issued?.body.code, 'CLAIM-FIRST');
   assert.equal(removed.status, 409);
-  assert.equal(removed.body.code, 'CODE_ALREADY_CLAIMED');
+  assert.equal(removed.body.code, 'CODE_NOT_AVAILABLE');
   const remaining = (await request(`/api/manage/pools/${p.id}/codes`, undefined, owner.cookie))
     .body;
   assert.equal(remaining.total, 1);
   assert.equal(remaining.items[0].id, row.id);
-  assert.equal(remaining.items[0].claimStatus, 'claimed');
+  assert.equal(remaining.items[0].status, 'claimed');
 });
 
 test('bulk deletion validates selection, enforces ownership and only removes selected unclaimed codes', async () => {
@@ -949,8 +940,8 @@ test('bulk deletion validates selection, enforces ownership and only removes sel
   await imported(p, owner.cookie, 'BULK-UNUSED\nBULK-USED\nBULK-DELETE\nBULK-KEEP');
   await imported(other, owner.cookie, 'OTHER-POOL');
   await claim(p);
-  const used = await claim(p);
-  await request('/api/claim/used', { claimKey: p.claimKey, code: used.body.code });
+  const redeemed = await claim(p);
+  await markRedeemed(p, owner.cookie, redeemed.body.code);
   const list = async (target) =>
     (await request(`/api/manage/pools/${target.id}/codes`, undefined, owner.cookie)).body.items;
   const rows = await list(p);
@@ -1059,7 +1050,7 @@ test('bulk deletion skips a code claimed just before the delete statement execut
     .items;
   assert.equal(remaining.length, 1);
   assert.equal(remaining[0].code, issued.body.code);
-  assert.equal(remaining[0].claimStatus, 'claimed');
+  assert.equal(remaining[0].status, 'claimed');
 });
 
 test('record counts include an empty pool and exclude every other pool and space', async () => {
@@ -1071,11 +1062,249 @@ test('record counts include an empty pool and exclude every other pool and space
   await imported(other, owner.cookie, 'OTHER-A\nOTHER-B');
   await imported(foreign, outsider.cookie, 'FOREIGN');
   const result = await request(`/api/manage/pools/${empty.id}/codes`, undefined, owner.cookie);
-  assert.deepEqual(result.body.counts, { all: 0, unclaimed: 0, unused: 0, used: 0 });
+  assert.deepEqual(result.body.counts, { all: 0, unclaimed: 0, claimed: 0, redeemed: 0 });
   assert.equal(
     (await request(`/api/manage/pools/${other.id}/codes`, undefined, outsider.cookie)).status,
     404,
   );
   const own = await request(`/api/manage/pools/${other.id}/codes`, undefined, owner.cookie);
-  assert.deepEqual(own.body.counts, { all: 2, unclaimed: 2, unused: 0, used: 0 });
+  assert.deepEqual(own.body.counts, { all: 2, unclaimed: 2, claimed: 0, redeemed: 0 });
+});
+
+test('redeemed import partitions results, preserves claims and changes inventory without inventing claims', async () => {
+  const owner = await space();
+  const p = await pool(owner.cookie);
+  const other = await pool(owner.cookie);
+  await imported(p, owner.cookie, 'A\nB\nC');
+  await imported(other, owner.cookie, 'OTHER');
+  const issued = await claim(p, { remark: 'preserved' });
+  assert.equal(issued.body.code, 'A');
+  const result = await markRedeemed(
+    p,
+    owner.cookie,
+    ' A \r\n\nB\nB\nOTHER\nb\n' + 'X'.repeat(101) + '\nBAD\0CODE',
+  );
+  assert.equal(result.status, 200);
+  assert.deepEqual(
+    [
+      result.body.marked,
+      result.body.alreadyRedeemed,
+      result.body.removedFromAvailable,
+      result.body.failed,
+    ],
+    [2, 0, 1, 5],
+  );
+  assert.deepEqual(
+    result.body.failures.map((r) => [r.line, r.reasonCode]),
+    [
+      [4, 'DUPLICATE_IN_BATCH'],
+      [5, 'CODE_NOT_IN_POOL'],
+      [6, 'CODE_NOT_IN_POOL'],
+      [7, 'CODE_TOO_LONG'],
+      [8, 'CODE_NULL'],
+    ],
+  );
+  const list = async () =>
+    (await request(`/api/manage/pools/${p.id}/codes`, undefined, owner.cookie)).body;
+  const before = await list();
+  assert.deepEqual(before.counts, { all: 3, unclaimed: 1, claimed: 0, redeemed: 2 });
+  assert.deepEqual(before.summary, { total: 3, remaining: 1, claimed: 1, redeemed: 2 });
+  const a = before.items.find((row) => row.code === 'A');
+  const b = before.items.find((row) => row.code === 'B');
+  assert.equal(a.claimedAt, issued.body.claimedAt);
+  assert.equal(a.remark, 'preserved');
+  assert.equal(b.claimedAt, null);
+  assert.equal(b.remark, null);
+  assert.ok(a.redeemedMarkedAt);
+  assert.equal(a.redeemedMarkedAt, b.redeemedMarkedAt);
+  const again = await markRedeemed(p, owner.cookie, 'A\nB');
+  assert.deepEqual(again.body, {
+    marked: 0,
+    alreadyRedeemed: 2,
+    removedFromAvailable: 0,
+    failed: 0,
+    failures: [],
+  });
+  assert.deepEqual(await list(), before);
+  for (const row of [a, b]) {
+    assert.equal(
+      (
+        await request(
+          `/api/manage/pools/${p.id}/codes/${row.id}`,
+          {},
+          owner.cookie,
+          env,
+          {},
+          'DELETE',
+        )
+      ).status,
+      409,
+    );
+  }
+  assert.deepEqual(
+    (
+      await request(
+        `/api/manage/pools/${p.id}/codes`,
+        { ids: [a.id, b.id] },
+        owner.cookie,
+        env,
+        {},
+        'DELETE',
+      )
+    ).body,
+    { deleted: 0, skipped: 2 },
+  );
+  const stats = (await request('/api/manage/pools', undefined, owner.cookie)).body.items.find(
+    (row) => row.id === p.id,
+  );
+  assert.deepEqual([stats.total, stats.remaining, stats.claimed, stats.redeemed], [3, 1, 1, 2]);
+  assert.equal((await claim(p)).body.code, 'C');
+  assert.equal((await claim(p)).body.code, 'POOL_EMPTY');
+  assert.equal(
+    (await request('/api/claim/validate', { claimKey: other.claimKey })).body.remaining,
+    1,
+  );
+});
+
+test('redeemed import validates ownership, text and limits and supports 500 Unicode codes', async () => {
+  const owner = await space();
+  const outsider = await space();
+  const p = await pool(owner.cookie);
+  assert.equal((await markRedeemed(p, undefined, 'A')).status, 401);
+  assert.equal((await markRedeemed(p, outsider.cookie, 'A')).status, 404);
+  assert.equal((await markRedeemed({ id: 999999 }, owner.cookie, 'A')).status, 404);
+  for (const [text, reason] of [
+    [null, 'IMPORT_TEXT_REQUIRED'],
+    [' \n', 'IMPORT_EMPTY'],
+    [Array(501).fill('A').join('\n'), 'IMPORT_LIMIT'],
+  ]) {
+    const result = await markRedeemed(p, owner.cookie, text);
+    assert.equal(result.status, 400);
+    assert.equal(result.body.code, reason);
+  }
+  const missing = await markRedeemed(p, owner.cookie, 'MISSING');
+  assert.deepEqual([missing.body.marked, missing.body.failed], [0, 1]);
+  const codes = Array.from({ length: 500 }, (_, i) => (i === 0 ? '😀'.repeat(100) : `BATCH-${i}`));
+  await imported(p, owner.cookie, codes.join('\n'));
+  const result = await markRedeemed(p, owner.cookie, codes.join('\n'));
+  assert.deepEqual(result.body, {
+    marked: 500,
+    alreadyRedeemed: 0,
+    removedFromAvailable: 500,
+    failed: 0,
+    failures: [],
+  });
+  const stats = (await request(`/api/manage/pools/${p.id}/codes`, undefined, owner.cookie)).body;
+  assert.deepEqual(stats.summary, { total: 500, remaining: 0, claimed: 0, redeemed: 500 });
+});
+
+test('redeemed import rolls back earlier chunks when a later update fails', async () => {
+  const owner = await space();
+  const p = await pool(owner.cookie);
+  const codes = Array.from({ length: 60 }, (_, i) => `ROLLBACK-${i}`);
+  await imported(p, owner.cookie, codes.join('\n'));
+  await env.DB.prepare(
+    `CREATE TRIGGER reject_redemption BEFORE UPDATE ON redemption_codes WHEN NEW.pool_id = ${p.id} AND NEW.code = 'ROLLBACK-59' BEGIN SELECT RAISE(ABORT, 'test failure'); END`,
+  ).run();
+  try {
+    assert.equal((await markRedeemed(p, owner.cookie, codes.join('\n'))).status, 500);
+    const stats = (await request(`/api/manage/pools/${p.id}/codes`, undefined, owner.cookie)).body;
+    assert.deepEqual(stats.summary, { total: 60, remaining: 60, claimed: 0, redeemed: 0 });
+  } finally {
+    await env.DB.prepare('DROP TRIGGER reject_redemption').run();
+  }
+  assert.equal((await markRedeemed(p, owner.cookie, codes.join('\n'))).body.marked, 60);
+});
+
+test('concurrent redeemed imports count each transition once', async () => {
+  const owner = await space();
+  const p = await pool(owner.cookie);
+  await imported(p, owner.cookie, 'ONE\nTWO');
+  const results = await Promise.all(
+    Array.from({ length: 5 }, () => markRedeemed(p, owner.cookie, 'ONE\nTWO')),
+  );
+  assert.ok(results.every((r) => r.status === 200));
+  assert.equal(
+    results.reduce((n, r) => n + r.body.marked, 0),
+    2,
+  );
+  assert.equal(
+    results.reduce((n, r) => n + r.body.removedFromAvailable, 0),
+    2,
+  );
+  assert.equal(
+    results.reduce((n, r) => n + r.body.alreadyRedeemed, 0),
+    8,
+  );
+});
+
+test('redeeming during Siteverify prevents issuance; claiming before redemption preserves the claim', async () => {
+  const owner = await space();
+  const p = await pool(owner.cookie);
+  await imported(p, owner.cookie, 'REDEEM-FIRST');
+  verification = async () => {
+    assert.equal(
+      (await markRedeemed(p, owner.cookie, 'REDEEM-FIRST')).body.removedFromAvailable,
+      1,
+    );
+    return successfulVerification();
+  };
+  assert.equal((await claim(p)).body.code, 'POOL_EMPTY');
+  verification = successfulVerification;
+  await imported(p, owner.cookie, 'CLAIM-FIRST');
+  let issued;
+  const bindings = {
+    ...env,
+    DB: {
+      prepare: (query) => env.DB.prepare(query),
+      batch: async (statements) => {
+        issued = await claim(p, { remark: 'race preserved' });
+        return env.DB.batch(statements);
+      },
+    },
+  };
+  const result = await markRedeemed(p, owner.cookie, 'CLAIM-FIRST', bindings);
+  assert.equal(issued.status, 200);
+  assert.deepEqual([result.body.marked, result.body.removedFromAvailable], [1, 0]);
+  const row = (
+    await request(`/api/manage/pools/${p.id}/codes`, undefined, owner.cookie)
+  ).body.items.find((r) => r.code === 'CLAIM-FIRST');
+  assert.equal(row.status, 'redeemed');
+  assert.equal(row.claimedAt, issued.body.claimedAt);
+  assert.equal(row.remark, 'race preserved');
+});
+
+test('redeemed import rechecks records and pool existence inside the transaction', async () => {
+  const owner = await space();
+  for (const deletePool of [false, true]) {
+    const p = await pool(owner.cookie);
+    await imported(p, owner.cookie, 'DELETE-RACE');
+    const row = (await request(`/api/manage/pools/${p.id}/codes`, undefined, owner.cookie)).body
+      .items[0];
+    const bindings = {
+      ...env,
+      DB: {
+        prepare: (query) => env.DB.prepare(query),
+        batch: async (statements) => {
+          if (deletePool) await deleted(p, owner.cookie);
+          else
+            await request(
+              `/api/manage/pools/${p.id}/codes/${row.id}`,
+              {},
+              owner.cookie,
+              env,
+              {},
+              'DELETE',
+            );
+          return env.DB.batch(statements);
+        },
+      },
+    };
+    const result = await markRedeemed(p, owner.cookie, 'DELETE-RACE', bindings);
+    assert.equal(result.status, deletePool ? 404 : 200);
+    if (!deletePool) {
+      assert.equal(result.body.marked, 0);
+      assert.equal(result.body.failures[0].reasonCode, 'CODE_NOT_IN_POOL');
+    }
+  }
 });

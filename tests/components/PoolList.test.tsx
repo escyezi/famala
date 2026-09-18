@@ -29,7 +29,7 @@ test('码池状态互斥分类，搜索忽略大小写与首尾空格并与状�
   await user.click(screen.getByRole('button', { name: '全部 5' }));
   await user.type(screen.getByRole('searchbox', { name: '搜索码池名称' }), '  ALPHA  ');
   expect(screen.getAllByRole('link')).toHaveLength(2);
-  await user.click(screen.getByRole('button', { name: '已领完 1' }));
+  await user.click(screen.getByRole('button', { name: '暂无可领取的兑换码 1' }));
   expect(screen.getAllByRole('link')).toHaveLength(1);
   expect(screen.getByRole('heading', { name: 'Alpha 已领完' })).toBeVisible();
   await user.click(screen.getByRole('button', { name: '待导入 1' }));
@@ -77,7 +77,7 @@ test('行内复制和导入作用于正确码池，名称链接支持普通及�
   );
   expect(within(row).getByRole('button', { name: '已复制' })).toBeVisible();
   expect(within(row).queryByRole('textbox')).not.toBeInTheDocument();
-  await user.click(within(row).getByRole('button', { name: '导入兑换码' }));
+  await user.click(within(row).getByRole('button', { name: '添加兑换码' }));
   expect(within(screen.getByRole('dialog')).getByText('Alpha 福利')).toBeVisible();
   await user.click(screen.getByRole('button', { name: '关闭弹窗' }));
   const link = within(row).getByRole('link');

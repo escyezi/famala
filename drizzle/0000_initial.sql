@@ -2,6 +2,7 @@ CREATE TABLE `code_pools` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`space_id` integer NOT NULL,
 	`name` text NOT NULL,
+	`description` text,
 	`claim_key` text NOT NULL,
 	`status` text DEFAULT 'active' NOT NULL,
 	`created_at` integer NOT NULL,
@@ -37,18 +38,18 @@ CREATE TABLE `redemption_codes` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`pool_id` integer NOT NULL,
 	`code` text NOT NULL,
-	`claim_status` text DEFAULT 'unclaimed' NOT NULL,
+	`status` text DEFAULT 'unclaimed' NOT NULL,
 	`claimed_at` integer,
 	`remark` text,
-	`user_marked_used` integer DEFAULT false NOT NULL,
-	`user_marked_used_at` integer,
+	`redeemed_marked_at` integer,
 	`created_at` integer NOT NULL,
 	FOREIGN KEY (`pool_id`) REFERENCES `code_pools`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "code_length_check" CHECK(length("redemption_codes"."code") BETWEEN 1 AND 100),
 	CONSTRAINT "remark_length_check" CHECK("redemption_codes"."remark" IS NULL OR length("redemption_codes"."remark") <= 500),
-	CONSTRAINT "claim_state_check" CHECK(("redemption_codes"."claim_status" = 'unclaimed' AND "redemption_codes"."claimed_at" IS NULL AND "redemption_codes"."remark" IS NULL) OR ("redemption_codes"."claim_status" = 'claimed' AND "redemption_codes"."claimed_at" IS NOT NULL)),
-	CONSTRAINT "used_state_check" CHECK(("redemption_codes"."user_marked_used" = 0 AND "redemption_codes"."user_marked_used_at" IS NULL) OR ("redemption_codes"."user_marked_used" = 1 AND "redemption_codes"."user_marked_used_at" IS NOT NULL AND "redemption_codes"."claim_status" = 'claimed'))
+	CONSTRAINT "code_status_check" CHECK("redemption_codes"."status" IN ('unclaimed', 'claimed', 'redeemed')),
+	CONSTRAINT "claim_state_check" CHECK(("redemption_codes"."status" != 'unclaimed' OR "redemption_codes"."claimed_at" IS NULL) AND ("redemption_codes"."status" != 'claimed' OR "redemption_codes"."claimed_at" IS NOT NULL) AND ("redemption_codes"."claimed_at" IS NOT NULL OR "redemption_codes"."remark" IS NULL)),
+	CONSTRAINT "redeemed_state_check" CHECK(("redemption_codes"."status" = 'redeemed' AND "redemption_codes"."redeemed_marked_at" IS NOT NULL) OR ("redemption_codes"."status" != 'redeemed' AND "redemption_codes"."redeemed_marked_at" IS NULL))
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `codes_pool_code_unique` ON `redemption_codes` (`pool_id`,`code`);--> statement-breakpoint
-CREATE INDEX `codes_pool_status_idx` ON `redemption_codes` (`pool_id`,`claim_status`);
+CREATE INDEX `codes_pool_status_idx` ON `redemption_codes` (`pool_id`,`status`);

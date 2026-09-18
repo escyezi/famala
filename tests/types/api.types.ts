@@ -1,6 +1,6 @@
 import { expectTypeOf } from 'vitest';
 import { api, rpc } from '../../src/react-app/api.ts';
-import type { ClaimRecord, UsedResult } from '../../src/shared/contracts.ts';
+import type { ClaimRecord } from '../../src/shared/contracts.ts';
 
 // Compiled by tsconfig.tests.json, never executed. Each expect-error must keep
 // producing an error, so widening the client to any/unknown fails the build.
@@ -42,7 +42,7 @@ export async function apiTypeChecks() {
   expectTypeOf(deletedCode.ok).toEqualTypeOf<true>();
   // @ts-expect-error Individual deletion also requires a code ID.
   rpc.api.manage.pools[':id'].codes[':codeId'].$delete({ param: { id: '1' } });
-  for (const status of ['unclaimed', 'unused', 'used'] as const) {
+  for (const status of ['unclaimed', 'claimed', 'redeemed'] as const) {
     const codes = await api(
       rpc.api.manage.pools[':id'].codes.$get({
         param: { id: '1' },
@@ -52,18 +52,25 @@ export async function apiTypeChecks() {
     expectTypeOf(codes.counts).toEqualTypeOf<{
       all: number;
       unclaimed: number;
-      unused: number;
-      used: number;
+      claimed: number;
+      redeemed: number;
     }>();
-    expectTypeOf(codes.items[0].userMarkedUsedAt).toEqualTypeOf<number | null>();
+    expectTypeOf(codes.items[0].redeemedMarkedAt).toEqualTypeOf<number | null>();
   }
   // Remark is optional; request input comes from validation, not a caller cast.
   const claimed = await api(
     rpc.api.claim.$post({ json: { claimKey: 'key', turnstileToken: 'token' } }),
   );
   expectTypeOf(claimed).toExtend<ClaimRecord>();
-  const used = await api(rpc.api.claim.used.$post({ json: { claimKey: 'key', code: 'code' } }));
-  expectTypeOf(used).toEqualTypeOf<UsedResult>();
+  const redeemed = await api(
+    rpc.api.manage.pools[':id'].redeemed.import.$post({
+      param: { id: '1' },
+      json: { text: 'CODE' },
+    }),
+  );
+  expectTypeOf(redeemed.marked).toEqualTypeOf<number>();
+  // @ts-expect-error Recipient marking has been removed.
+  rpc.api.claim.used.$post({ json: { claimKey: 'key', code: 'code' } });
 
   // @ts-expect-error Unknown endpoint.
   rpc.api.missing.$get();

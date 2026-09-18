@@ -24,8 +24,8 @@ export function RecordsToolbar({
           [
             ['all', t('manage.all')],
             ['unclaimed', t('common.unclaimed')],
-            ['unused', t('manage.unused')],
-            ['used', t('manage.used')],
+            ['claimed', t('common.claimed')],
+            ['redeemed', t('manage.redeemed')],
           ] as const
         ).map(([value, label]) => (
           <button
@@ -39,7 +39,9 @@ export function RecordsToolbar({
           >
             {label}
             <span className="records-tab-count">
-              {details.codes ? number(details.codes.counts[value]) : '—'}
+              {details.codes && (!details.invalidated || details.pending)
+                ? number(details.codes.counts[value])
+                : '—'}
             </span>
             {details.pending && details.requestedQuery.filter === value && (
               <span className="records-spinner" aria-hidden="true" />
@@ -64,6 +66,16 @@ export function RecordsToolbar({
             </button>
           </>
         )}
+        <button
+          type="button"
+          className="text-button refresh-button"
+          aria-label={t('common.refresh')}
+          title={t('common.refresh')}
+          disabled={details.controlsLocked}
+          onClick={details.refresh}
+        >
+          <Icon name="refresh" size={18} />
+        </button>
       </div>
     </div>
   );

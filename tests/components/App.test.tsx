@@ -9,11 +9,11 @@ import { deferred, json, mockApi, pool, publicPool, session } from './helpers.ts
 const row: CodeRow = {
   id: 1,
   code: 'POOL-ONE',
-  claimStatus: 'unclaimed',
+  status: 'unclaimed',
   claimedAt: null,
   remark: null,
-  userMarkedUsed: false,
-  userMarkedUsedAt: null,
+
+  redeemedMarkedAt: null,
   createdAt: pool.createdAt,
 };
 
@@ -119,19 +119,21 @@ test('前进后退和切换码池重置详情状态，已离开的请求返回 4
     'GET /api/manage/pools': () => json({ items: [pool, second] } satisfies ApiResponses['pools']),
     'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () =>
       json({
-        counts: { all: 1, unclaimed: 1, unused: 0, used: 0 },
+        counts: { all: 1, unclaimed: 1, claimed: 0, redeemed: 0 },
+        summary: { total: 1, remaining: 1, claimed: 0 + 0, redeemed: 0 },
         items: [row],
         total: 1,
         page: 1,
         pageSize: 20,
       } satisfies ApiResponses['codes']),
-    'GET /api/manage/pools/1/codes?page=1&status=unused&pageSize=20': (init) => {
+    'GET /api/manage/pools/1/codes?page=1&status=claimed&pageSize=20': (init) => {
       oldSignal = init.signal;
       return oldCodes.promise;
     },
     'GET /api/manage/pools/2/codes?page=1&status=all&pageSize=20': () =>
       json({
-        counts: { all: 1, unclaimed: 1, unused: 0, used: 0 },
+        counts: { all: 1, unclaimed: 1, claimed: 0, redeemed: 0 },
+        summary: { total: 1, remaining: 1, claimed: 0 + 0, redeemed: 0 },
         items: [{ ...row, code: 'POOL-TWO' }],
         total: 1,
         page: 1,
@@ -142,8 +144,8 @@ test('前进后退和切换码池重置详情状态，已离开的请求返回 4
   render(<App />);
   await user.click(await screen.findByRole('link', { name: new RegExp(pool.name) }));
   await screen.findByText('POOL-ONE');
-  await user.click(screen.getByRole('button', { name: '未使用' }));
-  expect(screen.getByRole('button', { name: '更多' })).toBeDisabled();
+  await user.click(screen.getByRole('button', { name: '已领取' }));
+  expect(screen.getByRole('button', { name: '刷新数据' })).toBeDisabled();
   act(() => history.back());
   await screen.findByRole('heading', { name: /^我的码池/, level: 1 });
   expect(oldSignal?.aborted).toBe(true);
@@ -177,7 +179,8 @@ test('会话过期清除旧空间详情，重新登录保留目标路由且忽�
     'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () =>
       loggedInAgain
         ? json({
-            counts: { all: 1, unclaimed: 1, unused: 0, used: 0 },
+            counts: { all: 1, unclaimed: 1, claimed: 0, redeemed: 0 },
+            summary: { total: 1, remaining: 1, claimed: 0 + 0, redeemed: 0 },
             items: [{ ...row, code: 'NEW-SESSION' }],
             total: 1,
             page: 1,
@@ -206,7 +209,8 @@ test('会话过期清除旧空间详情，重新登录保留目标路由且忽�
   await act(async () =>
     oldCodes.resolve(
       json({
-        counts: { all: 1, unclaimed: 1, unused: 0, used: 0 },
+        counts: { all: 1, unclaimed: 1, claimed: 0, redeemed: 0 },
+        summary: { total: 1, remaining: 1, claimed: 0 + 0, redeemed: 0 },
         items: [row],
         total: 1,
         page: 1,
@@ -252,7 +256,8 @@ test('删除后返回空间并立即移除旧卡片，后退不能重新打开�
       deleted ? refreshed.promise : json({ items: [pool] } satisfies ApiResponses['pools']),
     'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () =>
       json({
-        counts: { all: 1, unclaimed: 1, unused: 0, used: 0 },
+        counts: { all: 1, unclaimed: 1, claimed: 0, redeemed: 0 },
+        summary: { total: 1, remaining: 1, claimed: 0 + 0, redeemed: 0 },
         items: [row],
         total: 1,
         page: 1,

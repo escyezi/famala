@@ -16,3 +16,5 @@ export type CodePageSize = NonNullable<
 export type ImportResult = InferResponseType<PoolApi['import']['$post'], 200>;
 export type PublicPool = InferResponseType<Api['claim']['validate']['$post'], 200>;
 export type PublicConfig = InferResponseType<Api['config']['$get'], 200>;
+
+export type RedeemedImportResult = InferResponseType<PoolApi['redeemed']['import']['$post'], 200>;

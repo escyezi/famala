@@ -48,7 +48,7 @@ export function PoolRecords({
           onClearResult();
           onDeleteMany(
             details.codes?.items.filter(
-              (row) => selectedIds.includes(row.id) && row.claimStatus === 'unclaimed',
+              (row) => selectedIds.includes(row.id) && row.status === 'unclaimed',
             ) ?? [],
           );
         }}
@@ -84,8 +84,7 @@ export function PoolRecords({
                       filter: {
                         all: t('manage.all'),
                         unclaimed: t('common.unclaimed'),
-                        unused: t('manage.unused'),
-                        used: t('manage.used'),
+                        redeemed: t('manage.redeemed'),
                         claimed: t('common.claimed'),
                       }[details.failedQuery?.filter ?? details.filter],
                     })}{' '}

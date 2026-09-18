@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vitest';
-import { readRecords, saveClaim, saveUsed, STORAGE_KEY } from '../src/react-app/storage.ts';
+import { readRecords, saveClaim, STORAGE_KEY } from '../src/react-app/storage.ts';
 const memory = new Map();
 let queue = Promise.resolve();
 const locks = {
@@ -15,8 +15,6 @@ const record = (letter, code = letter) => ({
   poolName: '测试池',
   code,
   claimedAt: 123,
-  userMarkedUsed: false,
-  userMarkedUsedAt: null,
 });
 beforeEach(() => {
   memory.clear();
@@ -40,14 +38,14 @@ test('simultaneous saves merge different pools without overwriting, and keep the
   assert.equal(readRecords().records.length, 2);
   assert.equal(readRecords().records[0].code, 'first');
 });
-test('used marks only change an exact key and code match and never overwrite another code', async () => {
-  await saveClaim(record('A', 'first'));
-  await saveUsed(record('A', 'second'), { userMarkedUsed: true, userMarkedUsedAt: 456 });
-  assert.equal(readRecords().records[0].userMarkedUsed, false);
-  await saveUsed(record('A', 'first'), { userMarkedUsed: true, userMarkedUsedAt: 456 });
-  assert.equal(readRecords().records[0].userMarkedUsedAt, 456);
-  await saveClaim(record('A', 'first'));
-  assert.equal(readRecords().records[0].userMarkedUsedAt, 456);
+test('legacy self-reported usage fields are ignored without losing claim history', async () => {
+  memory.set(
+    STORAGE_KEY,
+    JSON.stringify([{ ...record('A'), userMarkedUsed: true, userMarkedUsedAt: 456 }]),
+  );
+  assert.deepEqual(readRecords(), { records: [record('A')], warning: null });
+  await saveClaim(record('B'));
+  assert.deepEqual(JSON.parse(memory.get(STORAGE_KEY)), [record('A'), record('B')]);
 });
 test('corrupt or inaccessible storage is reported and never silently overwritten', async () => {
   memory.set(STORAGE_KEY, '{broken');

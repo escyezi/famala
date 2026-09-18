@@ -4,12 +4,20 @@ import { useEffect, useId, useRef, useState } from 'react';
 export function PoolActionsMenu({
   stopped,
   busy,
+  keyVisible,
+  keyPanelId,
+  onToggleKey,
+  onImportRedeemed,
   onRename,
   onStatus,
   onDelete,
 }: {
   stopped: boolean;
   busy: boolean;
+  keyVisible: boolean;
+  keyPanelId: string;
+  onToggleKey: () => void;
+  onImportRedeemed: () => void;
   onRename: () => void;
   onStatus: () => void;
   onDelete: () => void;
@@ -56,7 +64,6 @@ export function PoolActionsMenu({
       <button
         className="button secondary small"
         ref={trigger}
-        disabled={busy}
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((value) => !value)}
@@ -70,6 +77,16 @@ export function PoolActionsMenu({
           role="group"
           aria-label={t('manage.actions')}
         >
+          <button
+            aria-expanded={keyVisible}
+            aria-controls={keyPanelId}
+            onClick={() => choose(onToggleKey)}
+          >
+            {t('manage.viewKey')}
+          </button>
+          <button disabled={busy} onClick={() => choose(onImportRedeemed)}>
+            {t('manage.importRedeemed')}
+          </button>
           <button disabled={busy} onClick={() => choose(onRename)}>
             {t('manage.rename')}
           </button>

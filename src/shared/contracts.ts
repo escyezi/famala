@@ -5,11 +5,9 @@ export interface ClaimRecord {
   claimKey: string;
   code: string;
   claimedAt: number;
-  userMarkedUsed: boolean;
-  userMarkedUsedAt: number | null;
 }
 export type ImportReason =
-  'CODE_TOO_LONG' | 'CODE_NULL' | 'DUPLICATE_IN_BATCH' | 'DUPLICATE_IN_POOL';
+  'CODE_TOO_LONG' | 'CODE_NULL' | 'DUPLICATE_IN_BATCH' | 'DUPLICATE_IN_POOL' | 'CODE_NOT_IN_POOL';
 export function importFailure(
   row: { line: number; code: string },
   reasonCode: ImportReason,
@@ -26,10 +24,6 @@ export interface ImportFailure {
   code: string;
   reasonCode: ImportReason;
   params?: MessageParams;
-}
-export interface UsedResult {
-  userMarkedUsed: true;
-  userMarkedUsedAt: number;
 }
 export const codePointLength = (value: string) => Array.from(value).length;
 

@@ -98,7 +98,7 @@ test('备注按 Unicode 字符计数，超过 500 字时阻止提交', async () 
 
 test.each([
   ['stopped', 2, '停止发放'],
-  ['active', 0, '兑换码已发放完毕'],
+  ['active', 0, '暂无可领取的兑换码'],
 ] as const)('码池状态 %s、库存 %i 时禁止领取，刷新后可恢复', async (status, remaining, label) => {
   const validate = vi
     .fn()
@@ -110,7 +110,7 @@ test.each([
   const turnstile = mockTurnstile();
   const user = userEvent.setup();
   renderClaim();
-  expect(await screen.findByText(label)).toBeVisible();
+  expect((await screen.findAllByText(label))[0]).toBeVisible();
   expect(screen.getByRole('button', { name: '领取兑换码' })).toBeDisabled();
   expect(turnstile.render).not.toHaveBeenCalled();
   await user.click(screen.getByRole('button', { name: '刷新领取状态' }));
@@ -121,7 +121,7 @@ test.each([
 
 test.each([
   ['POOL_STOPPED', '停止发放'],
-  ['POOL_EMPTY', '兑换码已发放完毕'],
+  ['POOL_EMPTY', '暂无可领取的兑换码'],
 ])('提交时服务端返回 %s，页面同步状态并停止领取', async (code, label) => {
   mockApi({
     ...publicRoutes,
@@ -133,7 +133,7 @@ test.each([
   const submit = await screen.findByRole('button', { name: '领取兑换码' });
   await turnstile.trigger('callback', 'token');
   await user.click(submit);
-  expect(await screen.findByText(label)).toBeVisible();
+  expect((await screen.findAllByText(label))[0]).toBeVisible();
   expect(submit).toBeDisabled();
   expect(readRecords().records).toEqual([]);
 });
@@ -218,7 +218,8 @@ test('码池已删除时仍展示本地兑换码，禁止再标记使用', async
     'POST /api/claim/validate': () => json({ code: 'CLAIM_KEY_NOT_FOUND' }, 404),
   });
   renderClaim();
-  expect(await screen.findByRole('button', { name: '无法标记使用' })).toBeDisabled();
+  await waitFor(() => expect(screen.getByText(claimRecord.code)).toBeVisible());
+  expect(screen.queryByRole('button', { name: '我已使用' })).not.toBeInTheDocument();
   expect(screen.getByText(claimRecord.code)).toBeVisible();
   expect(screen.getByRole('button', { name: '复制兑换码' })).toBeEnabled();
   expect(readRecords().records).toEqual([claimRecord]);
@@ -241,52 +242,19 @@ test('领取提交期间码池被删除后，停止领取并保留重新输入 K
   expect(readRecords().records).toEqual([]);
 });
 
-test('历史记录标记返回 404 后保留兑换码并禁止重复提交', async () => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([claimRecord]));
-  const mark = vi.fn(() => json({ code: 'RECORD_NOT_FOUND' }, 404));
-  mockApi({ 'POST /api/claim/used': mark });
-  const user = userEvent.setup();
+test('旧的本地自报标记不再展示，历史码仍可查看和复制', () => {
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify([
+      { ...claimRecord, userMarkedUsed: true, userMarkedUsedAt: claimRecord.claimedAt + 1000 },
+    ]),
+  );
+  const fetch = mockApi({});
   render(<HistoryDialog onClose={vi.fn()} />);
-  await user.click(screen.getByRole('button', { name: '我已使用' }));
-  const disabled = await screen.findByRole('button', { name: '无法标记使用' });
-  expect(disabled).toBeDisabled();
-  await user.click(disabled);
-  expect(mark).toHaveBeenCalledOnce();
+  expect(screen.queryByRole('button', { name: '我已使用' })).not.toBeInTheDocument();
+  expect(screen.queryByText('已标记使用')).not.toBeInTheDocument();
   expect(screen.getByText(claimRecord.code)).toBeVisible();
+  expect(screen.getByRole('button', { name: '复制兑换码' })).toBeEnabled();
   expect(readRecords().records).toEqual([claimRecord]);
-});
-
-test('标记使用失败不修改记录，重试成功后持久化并禁止重复标记', async () => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([claimRecord]));
-  const usedAt = claimRecord.claimedAt + 1000;
-  const used = vi
-    .fn()
-    .mockImplementationOnce(() => json({ code: 'SERVICE_UNAVAILABLE' }, 500))
-    .mockImplementationOnce(() =>
-      json({ userMarkedUsed: true, userMarkedUsedAt: usedAt } satisfies ApiResponses['markUsed']),
-    );
-  mockApi({ 'POST /api/claim/used': used });
-  const user = userEvent.setup();
-  const view = render(<HistoryDialog onClose={vi.fn()} />);
-  await user.click(screen.getByRole('button', { name: '我已使用' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('服务暂时不可用');
-  expect(readRecords().records[0].userMarkedUsed).toBe(false);
-  await user.click(screen.getByRole('button', { name: '我已使用' }));
-  expect(await screen.findByRole('button', { name: '已标记使用' })).toBeDisabled();
-  await waitFor(() =>
-    expect(readRecords().records[0]).toEqual({
-      ...claimRecord,
-      userMarkedUsed: true,
-      userMarkedUsedAt: usedAt,
-    }),
-  );
-  expect(used).toHaveBeenLastCalledWith(
-    expect.objectContaining({
-      body: JSON.stringify({ claimKey: pool.claimKey, code: claimRecord.code }),
-    }),
-  );
-  view.unmount();
-  render(<HistoryDialog onClose={vi.fn()} />);
-  expect(screen.getByRole('button', { name: '已标记使用' })).toBeDisabled();
-  expect(used).toHaveBeenCalledTimes(2);
+  expect(fetch).not.toHaveBeenCalled();
 });

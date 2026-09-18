@@ -10,35 +10,41 @@ import { deferred, json, mockApi, pool } from './helpers.ts';
 const unclaimed: CodeRow = {
   id: 1,
   code: 'AVAILABLE',
-  claimStatus: 'unclaimed',
+  status: 'unclaimed',
   claimedAt: null,
   remark: null,
-  userMarkedUsed: false,
-  userMarkedUsedAt: null,
+
+  redeemedMarkedAt: null,
   createdAt: pool.createdAt,
 };
-const unused: CodeRow = {
+const claimed: CodeRow = {
   ...unclaimed,
   id: 2,
   code: 'CLAIMED',
-  claimStatus: 'claimed',
+  status: 'claimed',
   claimedAt: pool.createdAt,
   remark: 'A long remark\nwith a second line',
 };
-const used: CodeRow = {
-  ...unused,
+const redeemed: CodeRow = {
+  ...claimed,
   id: 3,
   code: 'USED',
-  userMarkedUsed: true,
-  userMarkedUsedAt: pool.createdAt + 1000,
+  status: 'redeemed' as const,
+  redeemedMarkedAt: pool.createdAt + 1000,
 };
-const counts = { all: 3, unclaimed: 1, unused: 1, used: 1 };
+const counts = { all: 3, unclaimed: 1, claimed: 1, redeemed: 1 };
 const page = (items: CodeRow[], overrides: Partial<CodePage> = {}): CodePage => ({
   items,
   total: items.length,
   page: 1,
   pageSize: 20,
   counts,
+  summary: {
+    total: counts.all,
+    remaining: counts.unclaimed,
+    claimed: counts.claimed + counts.redeemed,
+    redeemed: counts.redeemed,
+  },
   ...overrides,
 });
 const url = (filter = 'all', n = 1, size = 20) =>
@@ -57,7 +63,7 @@ const renderDetail = () =>
 test('slow switch retains the same table and committed view, then commits columns/count/page together', async () => {
   const pending = deferred<Response>();
   mockApi({
-    [url()]: () => json(page([unclaimed, unused])),
+    [url()]: () => json(page([unclaimed, claimed])),
     [url('unclaimed')]: () => pending.promise,
   });
   const user = userEvent.setup();
@@ -66,10 +72,10 @@ test('slow switch retains the same table and committed view, then commits column
   const table = screen.getByRole('table');
   const region = screen.getByRole('region', { name: '领取明细表格' });
   region.scrollTop = 180;
-  await user.click(screen.getByRole('button', { name: '未领取' }));
+  await user.click(screen.getByRole('button', { name: '待领取' }));
   expect(screen.getByRole('button', { name: '全部' })).toHaveAttribute('aria-pressed', 'true');
   expect(
-    screen.getByRole('button', { name: '未领取' }).querySelector('.records-spinner'),
+    screen.getByRole('button', { name: '待领取' }).querySelector('.records-spinner'),
   ).not.toBeNull();
   expect(screen.getByRole('table')).toBe(table);
   expect(screen.getByText('CLAIMED')).toBeVisible();
@@ -77,7 +83,7 @@ test('slow switch retains the same table and committed view, then commits column
   expect(region.scrollTop).toBe(180);
   await act(async () => pending.resolve(json(page([unclaimed]))));
   expect(screen.getByRole('table')).toBe(table);
-  expect(screen.getByRole('button', { name: '未领取' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: '待领取' })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.queryByRole('columnheader', { name: '领取时间' })).not.toBeInTheDocument();
   expect(screen.queryByText('CLAIMED')).not.toBeInTheDocument();
   expect(region.scrollTop).toBe(0);
@@ -88,19 +94,19 @@ test('failed switch retains old view and retries the failed target rather than t
   const target = vi
     .fn()
     .mockImplementationOnce(() => json({ code: 'SERVICE_UNAVAILABLE' }, 503))
-    .mockImplementationOnce(() => json(page([unused])));
-  mockApi({ [url()]: () => json(page([unclaimed])), [url('unused')]: target });
+    .mockImplementationOnce(() => json(page([claimed])));
+  mockApi({ [url()]: () => json(page([unclaimed])), [url('claimed')]: target });
   const user = userEvent.setup();
   renderDetail();
   await screen.findByText('AVAILABLE');
-  await user.click(screen.getByRole('button', { name: '未使用' }));
+  await user.click(screen.getByRole('button', { name: '已领取' }));
   await screen.findByRole('button', { name: '重试' });
   expect(screen.getByText('AVAILABLE')).toBeVisible();
   expect(screen.getByRole('button', { name: '全部' })).toHaveAttribute('aria-pressed', 'true');
   await user.click(screen.getByRole('button', { name: '重试' }));
   await screen.findByText('CLAIMED');
   expect(target).toHaveBeenCalledTimes(2);
-  expect(screen.getByRole('button', { name: '未使用' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: '已领取' })).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('initial failure is not empty inventory; retry can commit a genuine empty result', async () => {
@@ -108,7 +114,7 @@ test('initial failure is not empty inventory; retry can commit a genuine empty r
     .fn()
     .mockImplementationOnce(() => json({ code: 'SERVICE_UNAVAILABLE' }, 503))
     .mockImplementationOnce(() =>
-      json(page([], { counts: { all: 0, unclaimed: 0, unused: 0, used: 0 } })),
+      json(page([], { counts: { all: 0, unclaimed: 0, claimed: 0, redeemed: 0 } })),
     );
   mockApi({ [url()]: load });
   const user = userEvent.setup();
@@ -126,19 +132,19 @@ test('valid cache switches immediately and a failed background refresh keeps its
     .fn()
     .mockImplementationOnce(() => json(page([unclaimed])))
     .mockImplementationOnce(() => background.promise);
-  mockApi({ [url()]: load, [url('unused')]: () => json(page([unused])) });
+  mockApi({ [url()]: load, [url('claimed')]: () => json(page([claimed])) });
   const user = userEvent.setup();
   renderDetail();
   await screen.findByText('AVAILABLE');
-  await user.click(screen.getByRole('button', { name: '未使用' }));
+  await user.click(screen.getByRole('button', { name: '已领取' }));
   await screen.findByText('CLAIMED');
   await user.click(screen.getByRole('button', { name: '全部' }));
   expect(screen.getByRole('button', { name: '全部' })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.getByText('AVAILABLE')).toBeVisible();
-  expect(screen.getByRole('button', { name: '未使用' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '已领取' })).toBeDisabled();
   await act(async () => background.resolve(json({ code: 'SERVICE_UNAVAILABLE' }, 503)));
   expect(screen.getByText(/刷新失败，当前显示上次加载的数据/)).toBeVisible();
-  expect(screen.getByRole('button', { name: '未使用' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: '已领取' })).toBeEnabled();
   expect(screen.getByText('AVAILABLE')).toBeVisible();
 });
 
@@ -155,7 +161,7 @@ test('refresh synchronously ignores every competing user entry, including duplic
   act(() => {
     result.current.refresh();
     result.current.refresh();
-    result.current.changeFilter('unused');
+    result.current.changeFilter('claimed');
     result.current.changeFilter('all');
     result.current.changePage(2);
     result.current.changePageSize('50');
@@ -178,14 +184,14 @@ test('expired cache waits for fresh data instead of committing expired results',
     .fn()
     .mockImplementationOnce(() => json(page([unclaimed])))
     .mockImplementationOnce(() => fresh.promise);
-  mockApi({ [url()]: load, [url('unused')]: () => json(page([unused])) });
+  mockApi({ [url()]: load, [url('claimed')]: () => json(page([claimed])) });
   const { result } = renderHook(() => usePoolDetails(pool, vi.fn()));
   await waitFor(() => expect(result.current.pending).toBe(false));
-  act(() => result.current.changeFilter('unused'));
-  await waitFor(() => expect(result.current.filter).toBe('unused'));
+  act(() => result.current.changeFilter('claimed'));
+  await waitFor(() => expect(result.current.filter).toBe('claimed'));
   now += 60_001;
   act(() => result.current.changeFilter('all'));
-  expect(result.current.filter).toBe('unused');
+  expect(result.current.filter).toBe('claimed');
   expect(result.current.pending).toBe(true);
   await act(async () => fresh.resolve(json(page([unclaimed]))));
   expect(result.current.filter).toBe('all');
@@ -198,13 +204,13 @@ test('invalidation prevents stale requests and caches from restoring outdated ro
     .mockImplementationOnce(() => json(page([unclaimed])))
     .mockImplementationOnce(() => json({ code: 'SERVICE_UNAVAILABLE' }, 503))
     .mockImplementationOnce(() => json(page([])));
-  mockApi({ [url()]: all, [url('unused')]: () => stale.promise });
+  mockApi({ [url()]: all, [url('claimed')]: () => stale.promise });
   const { result } = renderHook(() => usePoolDetails(pool, vi.fn()));
   await waitFor(() => expect(result.current.pending).toBe(false));
-  act(() => result.current.changeFilter('unused'));
+  act(() => result.current.changeFilter('claimed'));
   act(() => result.current.refreshAfterMutation());
   await waitFor(() => expect(result.current.codesError).not.toBeNull());
-  await act(async () => stale.resolve(json(page([unused]))));
+  await act(async () => stale.resolve(json(page([claimed]))));
   expect(result.current.codes?.items[0].code).toBe('AVAILABLE');
   expect(result.current.invalidated).toBe(true);
   expect(result.current.actionsDisabled).toBe(true);
@@ -213,27 +219,42 @@ test('invalidation prevents stale requests and caches from restoring outdated ro
   expect(result.current.codes?.items).toHaveLength(0);
 });
 
-test('same-query refresh keeps detail and scrolling; committed query switch closes details', async () => {
+test('same-query refresh keeps counts, detail and scrolling; committed query switch closes details', async () => {
   const refreshed = deferred<Response>();
   const all = vi
     .fn()
-    .mockImplementationOnce(() => json(page([unclaimed, used])))
+    .mockImplementationOnce(() => json(page([unclaimed, redeemed])))
     .mockImplementationOnce(() => refreshed.promise);
   mockApi({ [url()]: all, [url('unclaimed')]: () => json(page([unclaimed])) });
   const user = userEvent.setup();
   renderDetail();
   await screen.findByText('USED');
   await user.click(screen.getByRole('button', { name: '展开 USED 详情' }));
-  expect(screen.getByText('使用标记时间')).toBeVisible();
+  expect(screen.getByText('兑换标记时间')).toBeVisible();
   const region = screen.getByRole('region', { name: '领取明细表格' });
+  const statistics = screen.getByRole('region', { name: '码池统计' });
+  const readStatistics = () =>
+    within(statistics)
+      .getAllByRole('definition')
+      .map((value) => value.textContent);
+  const readTabCounts = () =>
+    ['全部', '待领取', '已领取', '已兑换'].map(
+      (name) => screen.getByRole('button', { name }).textContent,
+    );
+  const previousStatistics = readStatistics();
+  const previousTabCounts = readTabCounts();
   region.scrollTop = 90;
   await user.click(screen.getByRole('button', { name: '刷新数据' }));
+  expect(readStatistics()).toEqual(previousStatistics);
+  expect(readTabCounts()).toEqual(previousTabCounts);
   expect(screen.getByRole('button', { name: '收起 USED 详情' })).toBeVisible();
-  await act(async () => refreshed.resolve(json(page([unclaimed, used]))));
+  await act(async () => refreshed.resolve(json(page([unclaimed, redeemed]))));
+  expect(readStatistics()).toEqual(previousStatistics);
+  expect(readTabCounts()).toEqual(previousTabCounts);
   expect(region.scrollTop).toBe(90);
   expect(screen.getByRole('button', { name: '收起 USED 详情' })).toBeVisible();
-  await user.click(screen.getByRole('button', { name: '未领取' }));
-  await waitFor(() => expect(screen.queryByText('使用标记时间')).not.toBeInTheDocument());
+  await user.click(screen.getByRole('button', { name: '待领取' }));
+  await waitFor(() => expect(screen.queryByText('兑换标记时间')).not.toBeInTheDocument());
 });
 
 test('selection is cleared on request and cannot reappear after failure or returning through cache', async () => {
@@ -241,15 +262,15 @@ test('selection is cleared on request and cannot reappear after failure or retur
   mockApi({
     [url()]: () => json(page([unclaimed])),
     [url('unclaimed')]: () => json(page([unclaimed])),
-    [url('unused')]: () => pending.promise,
+    [url('claimed')]: () => pending.promise,
   });
   const user = userEvent.setup();
   renderDetail();
   await screen.findByText('AVAILABLE');
-  await user.click(screen.getByRole('button', { name: '未领取' }));
+  await user.click(screen.getByRole('button', { name: '待领取' }));
   await user.click(await screen.findByRole('checkbox', { name: '全选当前页' }));
   expect(screen.getByRole('button', { name: '批量删除' })).toBeEnabled();
-  await user.click(screen.getByRole('button', { name: '未使用' }));
+  await user.click(screen.getByRole('button', { name: '已领取' }));
   expect(screen.getByRole('checkbox', { name: '全选当前页' })).toBeDisabled();
   expect(screen.getByRole('checkbox', { name: '全选当前页' })).not.toBeChecked();
   await act(async () => pending.resolve(json({ code: 'SERVICE_UNAVAILABLE' }, 503)));
@@ -286,7 +307,7 @@ test('pagination waits without clearing content and backs up after the last page
   act(() => result.current.changePage(2));
   expect(result.current.page).toBe(1);
   expect(result.current.codes?.items).toHaveLength(1);
-  await act(async () => second.resolve(json(page([unused], { page: 2, total: 21 }))));
+  await act(async () => second.resolve(json(page([claimed], { page: 2, total: 21 }))));
   expect(result.current.page).toBe(2);
   deleted = true;
   act(() => result.current.refresh());
@@ -295,7 +316,7 @@ test('pagination waits without clearing content and backs up after the last page
   expect(result.current.page).toBe(1);
 });
 
-test('cache evicts the least recently used query after twenty entries', async () => {
+test('cache evicts the least recently redeemed query after twenty entries', async () => {
   const reload = deferred<Response>();
   let revisit = false;
   const routes = Object.fromEntries(
@@ -327,28 +348,28 @@ test('unmount aborts requests and a new pool instance cannot reuse the old cache
   const all = vi
     .fn()
     .mockImplementationOnce(() => json(page([unclaimed])))
-    .mockImplementationOnce(() => json(page([used])));
+    .mockImplementationOnce(() => json(page([redeemed])));
   mockApi({
     [url()]: all,
-    [url('unused')]: (init) => {
+    [url('claimed')]: (init) => {
       signal = init.signal;
       return late.promise;
     },
   });
   const first = renderHook(() => usePoolDetails(pool, vi.fn()));
   await waitFor(() => expect(first.result.current.pending).toBe(false));
-  act(() => first.result.current.changeFilter('unused'));
+  act(() => first.result.current.changeFilter('claimed'));
   first.unmount();
   expect(signal?.aborted).toBe(true);
   const second = renderHook(() => usePoolDetails(pool, vi.fn()));
   expect(second.result.current.codes).toBeNull();
   await waitFor(() => expect(second.result.current.codes?.items[0].code).toBe('USED'));
-  await act(async () => late.resolve(json(page([unused]))));
+  await act(async () => late.resolve(json(page([claimed]))));
   expect(second.result.current.codes?.items[0].code).toBe('USED');
 });
 
 test('row details preserve long content and copying uses the complete code', async () => {
-  const long = { ...unused, code: 'LONG-'.repeat(20) };
+  const long = { ...claimed, code: 'LONG-'.repeat(20) };
   mockApi({ [url()]: () => json(page([long, unclaimed])) });
   const user = userEvent.setup();
   const write = vi.spyOn(navigator.clipboard, 'writeText');
@@ -358,10 +379,10 @@ test('row details preserve long content and copying uses the complete code', asy
   await user.click(within(row).getByRole('button', { name: '复制' }));
   expect(write).toHaveBeenCalledWith(long.code);
   await user.click(within(row).getByRole('button', { name: `展开 ${long.code} 详情` }));
-  expect(screen.getByText('使用标记时间')).toBeVisible();
+  expect(screen.getByText('兑换标记时间')).toBeVisible();
   expect(screen.queryByRole('button', { name: '删除兑换码' })).not.toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: '展开 AVAILABLE 详情' }));
-  expect(screen.getAllByText('使用标记时间')).toHaveLength(1);
+  expect(screen.getAllByText('兑换标记时间')).toHaveLength(1);
   expect(screen.getByRole('button', { name: '删除兑换码' })).toBeEnabled();
 });
 
@@ -379,20 +400,25 @@ test('refresh locks all query/write controls while read-only interactions stay a
   await user.click(screen.getByRole('button', { name: '刷新数据' }));
   for (const name of [
     '全部',
-    '未领取',
-    '未使用',
-    '已使用',
+    '待领取',
+    '已领取',
+    '已兑换',
     '上一页',
     '下一页',
     '刷新数据',
-    '导入兑换码',
-    '更多',
+    '添加兑换码',
   ]) {
     expect(screen.getByRole('button', { name })).toBeDisabled();
   }
   expect(screen.getByRole('combobox')).toBeDisabled();
   expect(screen.getByRole('link', { name: '返回码池列表' })).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '更多' }));
   expect(screen.getByRole('button', { name: '查看领码 Key' })).toBeEnabled();
+  for (const name of ['标记已兑换', '修改名称', '停止发放', '删除码池']) {
+    expect(screen.getByRole('button', { name })).toBeDisabled();
+  }
+  await user.click(screen.getByRole('button', { name: '查看领码 Key' }));
+  expect(screen.getByText(pool.claimKey)).toBeVisible();
   expect(screen.getByRole('button', { name: '复制' })).toBeEnabled();
   await user.click(screen.getByRole('button', { name: '展开 AVAILABLE 详情' }));
   expect(screen.getByRole('button', { name: '删除兑换码' })).toBeDisabled();
@@ -418,7 +444,7 @@ test.each([200, 503])(
     act(() => {
       void result.current.status();
       void result.current.status();
-      result.current.changeFilter('unused');
+      result.current.changeFilter('claimed');
     });
     expect(mutate).toHaveBeenCalledTimes(1);
     expect(result.current.busy).toBe(true);
@@ -428,7 +454,7 @@ test.each([200, 503])(
     expect(result.current.busy).toBe(false);
     expect(result.current.controlsLocked).toBe(true);
     act(() => {
-      result.current.changeFilter('unused');
+      result.current.changeFilter('claimed');
       result.current.refresh();
     });
     expect(load).toHaveBeenCalledTimes(2);
@@ -495,26 +521,26 @@ test.each([200, 503, 401])(
 );
 
 test('retained refresh and import callbacks use the latest committed filter and page', async () => {
-  const unusedPage2 = vi.fn(() => json(page([unused], { page: 2, total: 21 })));
-  const unusedPage1 = vi.fn(() => json(page([unused], { total: 21 })));
+  const unusedPage2 = vi.fn(() => json(page([claimed], { page: 2, total: 21 })));
+  const unusedPage1 = vi.fn(() => json(page([claimed], { total: 21 })));
   const all = vi.fn(() => json(page([unclaimed])));
-  mockApi({ [url()]: all, [url('unused')]: unusedPage1, [url('unused', 2)]: unusedPage2 });
+  mockApi({ [url()]: all, [url('claimed')]: unusedPage1, [url('claimed', 2)]: unusedPage2 });
   const { result } = renderHook(() => usePoolDetails(pool, vi.fn()));
   await waitFor(() => expect(result.current.controlsLocked).toBe(false));
   const refresh = result.current.refresh;
   const imported = result.current.imported;
-  act(() => result.current.changeFilter('unused'));
+  act(() => result.current.changeFilter('claimed'));
   await waitFor(() => expect(result.current.controlsLocked).toBe(false));
   act(() => result.current.changePage(2));
   await waitFor(() => expect(result.current.page).toBe(2));
   act(() => refresh());
   await waitFor(() => expect(result.current.controlsLocked).toBe(false));
-  expect(result.current.filter).toBe('unused');
+  expect(result.current.filter).toBe('claimed');
   expect(result.current.page).toBe(2);
   expect(unusedPage2).toHaveBeenCalledTimes(2);
   act(() => imported());
   await waitFor(() => expect(result.current.controlsLocked).toBe(false));
-  expect(result.current.filter).toBe('unused');
+  expect(result.current.filter).toBe('claimed');
   expect(result.current.page).toBe(1);
   expect(all).toHaveBeenCalledTimes(1);
   expect(unusedPage1).toHaveBeenCalledTimes(2);
@@ -535,10 +561,10 @@ test('StrictMode cleanup does not let old read completion unlock the new lifecyc
   const { result } = renderHook(() => usePoolDetails(pool, vi.fn()), { wrapper: StrictMode });
   expect(load).toHaveBeenCalledTimes(2);
   expect(signal?.aborted).toBe(true);
-  await act(async () => old.resolve(json(page([unused]))));
+  await act(async () => old.resolve(json(page([claimed]))));
   expect(result.current.codes).toBeNull();
   expect(result.current.controlsLocked).toBe(true);
-  act(() => result.current.changeFilter('used'));
+  act(() => result.current.changeFilter('redeemed'));
   await act(async () => fresh.resolve(json(page([unclaimed]))));
   expect(result.current.codes?.items[0].code).toBe('AVAILABLE');
   expect(result.current.controlsLocked).toBe(false);
@@ -577,7 +603,7 @@ test.each(['import', 'rename', 'single', 'bulk', 'pool'] as const)(
     );
     await screen.findByText('AVAILABLE');
     if (kind === 'import') {
-      await user.click(screen.getByRole('button', { name: '导入兑换码' }));
+      await user.click(screen.getByRole('button', { name: '添加兑换码' }));
       await user.type(screen.getByRole('textbox'), 'NEW-CODE');
       await user.click(screen.getByRole('button', { name: '开始导入' }));
     } else if (kind === 'rename') {
@@ -590,7 +616,7 @@ test.each(['import', 'rename', 'single', 'bulk', 'pool'] as const)(
         await user.click(screen.getByRole('button', { name: '展开 AVAILABLE 详情' }));
         await user.click(screen.getByRole('button', { name: '删除兑换码' }));
       } else if (kind === 'bulk') {
-        await user.click(screen.getByRole('button', { name: '未领取' }));
+        await user.click(screen.getByRole('button', { name: '待领取' }));
         await user.click(await screen.findByRole('checkbox', { name: '全选当前页' }));
         await user.click(screen.getByRole('button', { name: '批量删除' }));
       } else {

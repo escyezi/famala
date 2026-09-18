@@ -31,17 +31,19 @@ export function PoolDetail({
 }) {
   const { dateTime, number } = useFormat();
   const { t } = useTranslation();
-  const [dialog, setDialog] = useState<'rename' | 'import' | 'delete' | null>(null);
+  const [dialog, setDialog] = useState<'rename' | 'import' | 'redeemed' | 'delete' | null>(null);
   const [deletingCode, setDeletingCode] = useState<CodeRow | null>(null);
   const [deletingCodes, setDeletingCodes] = useState<CodeRow[] | null>(null);
   const [bulkResult, setBulkResult] = useState<DeleteCodesResult | null>(null);
   const [keyVisible, setKeyVisible] = useState(false);
   const keyPanelId = useId();
   const details = usePoolDetails(pool, onRefresh);
-  const { codes, refresh, imported, status, controlsLocked, error } = details;
+  const { codes, imported, status, controlsLocked, error } = details;
   const total = codes?.counts.all ?? pool.total;
   const remaining = codes?.counts.unclaimed ?? pool.remaining;
-  const claimed = codes ? codes.counts.unused + codes.counts.used : pool.claimed;
+  const claimed = codes ? codes.summary.claimed : pool.claimed;
+  const redeemed = codes?.summary.redeemed ?? pool.redeemed;
+  const stat = (value: number) => (details.invalidated && !details.pending ? '—' : number(value));
   return (
     <div className="pool-detail-page">
       <header className="pool-page-header">
@@ -89,36 +91,19 @@ export function PoolDetail({
               label={t('manage.copyLink')}
               className="button secondary small pool-main-action"
             />
-            <button
-              type="button"
-              className="button secondary small pool-key-toggle"
-              aria-label={t('manage.viewKey')}
-              title={t('manage.viewKey')}
-              aria-expanded={keyVisible}
-              aria-controls={keyPanelId}
-              onClick={() => setKeyVisible((visible) => !visible)}
-            >
-              <Icon name="key" size={16} />
-            </button>
             <PoolActionsMenu
               stopped={pool.status === 'stopped'}
               busy={controlsLocked}
+              keyVisible={keyVisible}
+              keyPanelId={keyPanelId}
+              onToggleKey={() => setKeyVisible((visible) => !visible)}
+              onImportRedeemed={() => setDialog('redeemed')}
               onRename={() => setDialog('rename')}
               onStatus={() => void status()}
               onDelete={() => setDialog('delete')}
             />
           </div>
         </div>
-        <button
-          type="button"
-          className="text-button refresh-button pool-refresh"
-          aria-label={t('common.refresh')}
-          title={t('common.refresh')}
-          disabled={controlsLocked}
-          onClick={refresh}
-        >
-          <Icon name="refresh" size={18} />
-        </button>
       </header>
       <Notice>{error || poolsError}</Notice>
       <section className="pool-detail pool-overview" aria-label={t('manage.statistics')}>
@@ -126,15 +111,19 @@ export function PoolDetail({
           <dl className="pool-stats">
             <div className="remaining-stat">
               <dt>{t('manage.remaining')}</dt>
-              <dd>{number(remaining)}</dd>
+              <dd>{stat(remaining)}</dd>
             </div>
             <div>
-              <dt>{t('common.claimed')}</dt>
-              <dd>{number(claimed)}</dd>
+              <dt>{t('manage.claimedCumulative')}</dt>
+              <dd>{stat(claimed)}</dd>
+            </div>
+            <div>
+              <dt>{t('manage.redeemedTotal')}</dt>
+              <dd>{stat(redeemed)}</dd>
             </div>
             <div>
               <dt>{t('manage.total')}</dt>
-              <dd>{number(total)}</dd>
+              <dd>{stat(total)}</dd>
             </div>
           </dl>
           <p className="muted pool-created">
@@ -200,6 +189,19 @@ export function PoolDetail({
       )}
       {dialog === 'import' && (
         <ImportDialog pool={pool} onClose={() => setDialog(null)} onImported={imported} />
+      )}
+      {dialog === 'redeemed' && (
+        <ImportDialog
+          pool={pool}
+          mode="redeemed"
+          onClose={() => setDialog(null)}
+          onImported={() => {
+            if (details.isActive()) {
+              setBulkResult(null);
+              details.refreshAfterMutation();
+            }
+          }}
+        />
       )}
       {dialog === 'delete' && (
         <DeletePoolDialog

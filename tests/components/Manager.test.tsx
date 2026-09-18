@@ -9,7 +9,8 @@ const baseRoutes = {
   'GET /api/manage/pools': () => json({ items: [pool] } satisfies ApiResponses['pools']),
   'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () =>
     json({
-      counts: { all: pool.total, unclaimed: pool.remaining, unused: 0, used: 0 },
+      counts: { all: pool.total, unclaimed: pool.remaining, claimed: 0, redeemed: 0 },
+      summary: { total: pool.total, remaining: pool.remaining, claimed: 0 + 0, redeemed: 0 },
       items: [],
       total: pool.total,
       page: 1,
@@ -63,7 +64,7 @@ test('创建并导入不等待列表刷新，导入失败可重试且不会重�
   expect(screen.getByRole('button', { name: '创建并导入' })).toBeDisabled();
   await user.type(screen.getByLabelText('码池名称'), '  连续导入  ');
   await user.keyboard('{Enter}');
-  const dialog = await screen.findByRole('dialog', { name: '导入兑换码' });
+  const dialog = await screen.findByRole('dialog', { name: '添加兑换码' });
   expect(within(dialog).getByText('连续导入')).toBeVisible();
   expect(onNavigate).not.toHaveBeenCalled();
   await user.type(within(dialog).getByLabelText(/兑换码内容/), 'NEW-CODE');
@@ -119,12 +120,18 @@ test('修改名称遇到重名时保持弹窗，修正后更新详情标题', as
   await user.click(submit);
   expect(await screen.findByRole('heading', { name: '新的活动', level: 1 })).toBeVisible();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: '更多' }));
   const keyToggle = screen.getByRole('button', { name: '查看领码 Key' });
   expect(keyToggle).toHaveAttribute('aria-expanded', 'false');
   await user.click(keyToggle);
-  expect(keyToggle).toHaveAttribute('aria-expanded', 'true');
   expect(screen.getByText(pool.claimKey)).toBeVisible();
-  await user.click(keyToggle);
+  expect(screen.queryByRole('group', { name: '码池操作' })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: '更多' }));
+  expect(screen.getByRole('button', { name: '查看领码 Key' })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  );
+  await user.click(screen.getByRole('button', { name: '查看领码 Key' }));
   expect(screen.getByText(pool.claimKey)).not.toBeVisible();
 });
 
@@ -153,7 +160,13 @@ test('批量导入展示原始失败行和成功数量，完成后防止重复�
       } satisfies ApiResponses['pools']),
     'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () =>
       json({
-        counts: { all: imported ? 3 : 2, unclaimed: imported ? 3 : 2, unused: 0, used: 0 },
+        counts: { all: imported ? 3 : 2, unclaimed: imported ? 3 : 2, claimed: 0, redeemed: 0 },
+        summary: {
+          total: imported ? 3 : 2,
+          remaining: imported ? 3 : 2,
+          claimed: 0 + 0,
+          redeemed: 0,
+        },
         items: [],
         total: imported ? 3 : 2,
         page: 1,
@@ -163,8 +176,8 @@ test('批量导入展示原始失败行和成功数量，完成后防止重复�
   });
   const user = userEvent.setup();
   renderManager(String(pool.id));
-  await user.click(await screen.findByRole('button', { name: '导入兑换码' }));
-  const dialog = screen.getByRole('dialog', { name: '导入兑换码' });
+  await user.click(await screen.findByRole('button', { name: '添加兑换码' }));
+  const dialog = screen.getByRole('dialog', { name: '添加兑换码' });
   const submit = within(dialog).getByRole('button', { name: '开始导入' });
   expect(submit).toBeDisabled();
   const input = within(dialog).getByLabelText(/兑换码内容/);
@@ -194,7 +207,7 @@ test('批量导入超过 500 条时禁止提交', async () => {
   mockApi(baseRoutes);
   const user = userEvent.setup();
   renderManager(String(pool.id));
-  await user.click(await screen.findByRole('button', { name: '导入兑换码' }));
+  await user.click(await screen.findByRole('button', { name: '添加兑换码' }));
   await user.click(screen.getByLabelText(/兑换码内容/));
   await user.paste(Array.from({ length: 501 }, (_, i) => `CODE-${i}`).join('\n'));
   expect(screen.getByText('501 / 500 条')).toBeVisible();
@@ -205,18 +218,19 @@ test('按每页条数翻页，切换条数或使用状态筛选回到第一页',
   const row: ApiResponses['codes']['items'][number] = {
     id: 1,
     code: 'FIRST-PAGE',
-    claimStatus: 'unclaimed',
+    status: 'unclaimed',
     claimedAt: null,
     remark: null,
-    userMarkedUsed: false,
-    userMarkedUsedAt: null,
+
+    redeemedMarkedAt: null,
     createdAt: pool.createdAt,
   };
   mockApi({
     ...baseRoutes,
     'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () =>
       json({
-        counts: { all: 51, unclaimed: 51, unused: 0, used: 0 },
+        counts: { all: 51, unclaimed: 51, claimed: 0, redeemed: 0 },
+        summary: { total: 51, remaining: 51, claimed: 0 + 0, redeemed: 0 },
         items: [row],
         total: 51,
         page: 1,
@@ -224,7 +238,8 @@ test('按每页条数翻页，切换条数或使用状态筛选回到第一页',
       } satisfies ApiResponses['codes']),
     'GET /api/manage/pools/1/codes?page=2&status=all&pageSize=20': () =>
       json({
-        counts: { all: 51, unclaimed: 51, unused: 0, used: 0 },
+        counts: { all: 51, unclaimed: 51, claimed: 0, redeemed: 0 },
+        summary: { total: 51, remaining: 51, claimed: 0 + 0, redeemed: 0 },
         items: [{ ...row, code: 'SECOND-PAGE' }],
         total: 51,
         page: 2,
@@ -232,7 +247,8 @@ test('按每页条数翻页，切换条数或使用状态筛选回到第一页',
       } satisfies ApiResponses['codes']),
     'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=50': () =>
       json({
-        counts: { all: 51, unclaimed: 51, unused: 0, used: 0 },
+        counts: { all: 51, unclaimed: 51, claimed: 0, redeemed: 0 },
+        summary: { total: 51, remaining: 51, claimed: 0 + 0, redeemed: 0 },
         items: Array.from({ length: 50 }, (_, i) => ({
           ...row,
           id: i + 1,
@@ -244,16 +260,18 @@ test('按每页条数翻页，切换条数或使用状态筛选回到第一页',
       } satisfies ApiResponses['codes']),
     'GET /api/manage/pools/1/codes?page=2&status=all&pageSize=50': () =>
       json({
-        counts: { all: 51, unclaimed: 51, unused: 0, used: 0 },
+        counts: { all: 51, unclaimed: 51, claimed: 0, redeemed: 0 },
+        summary: { total: 51, remaining: 51, claimed: 0 + 0, redeemed: 0 },
         items: [{ ...row, code: 'LAST-PAGE' }],
         total: 51,
         page: 2,
         pageSize: 50,
       } satisfies ApiResponses['codes']),
-    'GET /api/manage/pools/1/codes?page=1&status=unused&pageSize=50': () =>
+    'GET /api/manage/pools/1/codes?page=1&status=claimed&pageSize=50': () =>
       json({
-        counts: { all: 1, unclaimed: 1, unused: 0, used: 0 },
-        items: [{ ...row, code: 'UNUSED-CODE', claimStatus: 'claimed', claimedAt: pool.createdAt }],
+        counts: { all: 1, unclaimed: 1, claimed: 0, redeemed: 0 },
+        summary: { total: 1, remaining: 1, claimed: 0 + 0, redeemed: 0 },
+        items: [{ ...row, code: 'UNUSED-CODE', status: 'claimed', claimedAt: pool.createdAt }],
         total: 1,
         page: 1,
         pageSize: 50,
@@ -275,7 +293,7 @@ test('按每页条数翻页，切换条数或使用状态筛选回到第一页',
   await user.click(screen.getByRole('button', { name: '下一页' }));
   expect(await screen.findByText('LAST-PAGE')).toBeVisible();
   expect(screen.getByRole('button', { name: '下一页' })).toBeDisabled();
-  await user.click(screen.getByRole('button', { name: '未使用' }));
+  await user.click(screen.getByRole('button', { name: '已领取' }));
   expect(await screen.findByText('UNUSED-CODE')).toBeVisible();
   expect(screen.queryByText('LAST-PAGE')).not.toBeInTheDocument();
   expect(screen.getByRole('combobox', { name: '每页条数' })).toHaveValue('50');
@@ -362,33 +380,34 @@ test('码池已被其他页面删除时，再次删除也返回列表', async ()
 const unclaimedCode: ApiResponses['codes']['items'][number] = {
   id: 1,
   code: 'AVAILABLE-CODE',
-  claimStatus: 'unclaimed',
+  status: 'unclaimed',
   claimedAt: null,
   remark: null,
-  userMarkedUsed: false,
-  userMarkedUsedAt: null,
+
+  redeemedMarkedAt: null,
   createdAt: pool.createdAt,
 };
 const unusedCode = {
   ...unclaimedCode,
   id: 2,
   code: 'UNUSED-CODE',
-  claimStatus: 'claimed' as const,
+  status: 'claimed' as const,
   claimedAt: pool.createdAt,
 };
 const usedCode = {
   ...unusedCode,
   id: 3,
   code: 'USED-CODE',
-  userMarkedUsed: true,
-  userMarkedUsedAt: pool.createdAt + 3_600_000,
+  status: 'redeemed' as const,
+  redeemedMarkedAt: pool.createdAt + 3_600_000,
 };
 
-test('明细显示三种状态和使用时间，仅未领取可删除，三种筛选请求各自状态', async () => {
+test('明细显示三种状态和使用时间，仅待领取可删除，三种筛选请求各自状态', async () => {
   const codeRows = [unclaimedCode, unusedCode, usedCode];
   const page = (items: typeof codeRows) =>
     json({
-      counts: { all: 3, unclaimed: 1, unused: 1, used: 1 },
+      counts: { all: 3, unclaimed: 1, claimed: 1, redeemed: 1 },
+      summary: { total: 3, remaining: 1, claimed: 1 + 1, redeemed: 1 },
       items,
       total: items.length,
       page: 1,
@@ -399,16 +418,16 @@ test('明细显示三种状态和使用时间，仅未领取可删除，三种�
     'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () => page(codeRows),
     'GET /api/manage/pools/1/codes?page=1&status=unclaimed&pageSize=20': () =>
       page([unclaimedCode]),
-    'GET /api/manage/pools/1/codes?page=1&status=unused&pageSize=20': () => page([unusedCode]),
-    'GET /api/manage/pools/1/codes?page=1&status=used&pageSize=20': () => page([usedCode]),
+    'GET /api/manage/pools/1/codes?page=1&status=claimed&pageSize=20': () => page([unusedCode]),
+    'GET /api/manage/pools/1/codes?page=1&status=redeemed&pageSize=20': () => page([usedCode]),
   });
   const user = userEvent.setup();
   renderManager('1');
   await screen.findByText(unclaimedCode.code);
   for (const [code, label] of [
-    [unclaimedCode, '未领取'],
-    [unusedCode, '未使用'],
-    [usedCode, '已使用'],
+    [unclaimedCode, '待领取'],
+    [unusedCode, '已领取'],
+    [usedCode, '已兑换'],
   ] as const) {
     const row = screen.getByText(code.code).closest('tr')!;
     expect(within(row).getByText(label)).toBeVisible();
@@ -426,15 +445,15 @@ test('明细显示三种状态和使用时间，仅未领取可删除，三种�
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(usedCode.userMarkedUsedAt);
+  }).format(usedCode.redeemedMarkedAt);
   expect(screen.getByText(expectedTime)).toBeVisible();
-  expect(screen.getByText('使用标记时间')).toBeVisible();
-  expect(screen.queryByRole('columnheader', { name: '使用标记时间' })).not.toBeInTheDocument();
+  expect(screen.getByText('兑换标记时间')).toBeVisible();
+  expect(screen.queryByRole('columnheader', { name: '兑换标记时间' })).not.toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: `收起 ${usedCode.code} 详情` }));
   for (const [label, code] of [
-    ['已使用', usedCode],
-    ['未使用', unusedCode],
-    ['未领取', unclaimedCode],
+    ['已兑换', usedCode],
+    ['已领取', unusedCode],
+    ['待领取', unclaimedCode],
   ] as const) {
     await user.click(screen.getByRole('button', { name: label }));
     await screen.findByText(code.code);
@@ -462,7 +481,13 @@ test('删除兑换码可取消和重试，提交期间禁用操作，删除末�
       } satisfies ApiResponses['pools']),
     'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () =>
       json({
-        counts: { all: removed ? 20 : 21, unclaimed: removed ? 20 : 21, unused: 0, used: 0 },
+        counts: { all: removed ? 20 : 21, unclaimed: removed ? 20 : 21, claimed: 0, redeemed: 0 },
+        summary: {
+          total: removed ? 20 : 21,
+          remaining: removed ? 20 : 21,
+          claimed: 0 + 0,
+          redeemed: 0,
+        },
         items: [{ ...unclaimedCode, id: 2, code: 'FIRST-PAGE' }],
         total: removed ? 20 : 21,
         page: 1,
@@ -470,7 +495,13 @@ test('删除兑换码可取消和重试，提交期间禁用操作，删除末�
       } satisfies ApiResponses['codes']),
     'GET /api/manage/pools/1/codes?page=2&status=all&pageSize=20': () =>
       json({
-        counts: { all: removed ? 20 : 21, unclaimed: removed ? 20 : 21, unused: 0, used: 0 },
+        counts: { all: removed ? 20 : 21, unclaimed: removed ? 20 : 21, claimed: 0, redeemed: 0 },
+        summary: {
+          total: removed ? 20 : 21,
+          remaining: removed ? 20 : 21,
+          claimed: 0 + 0,
+          redeemed: 0,
+        },
         items: removed ? [] : [unclaimedCode],
         total: removed ? 20 : 21,
         page: 2,
@@ -505,7 +536,7 @@ test('删除兑换码可取消和重试，提交期间禁用操作，删除末�
   expect(screen.getByText('1 / 1')).toBeVisible();
   await waitFor(() =>
     expect(
-      within(screen.getByRole('region', { name: '码池统计' })).getByText('剩余').parentElement,
+      within(screen.getByRole('region', { name: '码池统计' })).getByText('可领取').parentElement,
     ).toHaveTextContent('20'),
   );
 });
@@ -516,21 +547,19 @@ test.each([false, true])(
     let changed = false;
     const remove = vi.fn(() => {
       changed = true;
-      return json(
-        { code: claimed ? 'CODE_ALREADY_CLAIMED' : 'CODE_NOT_FOUND' },
-        claimed ? 409 : 404,
-      );
+      return json({ code: claimed ? 'CODE_NOT_AVAILABLE' : 'CODE_NOT_FOUND' }, claimed ? 409 : 404);
     });
     mockApi({
       ...baseRoutes,
       'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () => {
         const items = changed
           ? claimed
-            ? [{ ...unclaimedCode, claimStatus: 'claimed' as const, claimedAt: pool.createdAt }]
+            ? [{ ...unclaimedCode, status: 'claimed' as const, claimedAt: pool.createdAt }]
             : []
           : [unclaimedCode];
         return json({
-          counts: { all: 3, unclaimed: 1, unused: 1, used: 1 },
+          counts: { all: 3, unclaimed: 1, claimed: 1, redeemed: 1 },
+          summary: { total: 3, remaining: 1, claimed: 1 + 1, redeemed: 1 },
           items,
           total: items.length,
           page: 1,
@@ -547,10 +576,10 @@ test.each([false, true])(
     await user.click(screen.getByRole('button', { name: '删除兑换码' }));
     await user.click(screen.getByRole('button', { name: '确认删除' }));
     if (claimed) {
-      expect(await screen.findByRole('alert')).toHaveTextContent('兑换码已被领取，无法删除');
+      expect(await screen.findByRole('alert')).toHaveTextContent('仅待领取的兑换码可以删除');
       expect(screen.getByRole('button', { name: '确认删除' })).toBeDisabled();
       await waitFor(() =>
-        expect(within(screen.getByRole('table')).getByText('未使用')).toBeVisible(),
+        expect(within(screen.getByRole('table')).getByText('已领取')).toBeVisible(),
       );
       await user.click(screen.getByRole('button', { name: '取消' }));
     } else {
@@ -562,7 +591,7 @@ test.each([false, true])(
   },
 );
 
-test('批量选择仅在未领取页签出现，全选限定当前页，翻页、切换条数及刷新清空选择', async () => {
+test('批量选择仅在待领取页签出现，全选限定当前页，翻页、切换条数及刷新清空选择', async () => {
   const rows = Array.from({ length: 21 }, (_, i) => ({
     ...unclaimedCode,
     id: i + 1,
@@ -570,7 +599,8 @@ test('批量选择仅在未领取页签出现，全选限定当前页，翻页�
   }));
   const response = (page: number, size: number) =>
     json({
-      counts: { all: rows.length, unclaimed: rows.length, unused: 0, used: 0 },
+      counts: { all: rows.length, unclaimed: rows.length, claimed: 0, redeemed: 0 },
+      summary: { total: rows.length, remaining: rows.length, claimed: 0 + 0, redeemed: 0 },
       items: rows.slice((page - 1) * size, page * size),
       total: rows.length,
       page,
@@ -584,10 +614,10 @@ test('批量选择仅在未领取页签出现，全选限定当前页，翻页�
   });
   const user = userEvent.setup();
   renderManager('1');
-  await screen.findByRole('button', { name: '未领取' });
+  await screen.findByRole('button', { name: '待领取' });
   expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: '批量删除' })).not.toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: '未领取' }));
+  await user.click(screen.getByRole('button', { name: '待领取' }));
   await screen.findByText('SELECT-1');
   expect(screen.getByRole('button', { name: '批量删除' })).toBeDisabled();
   await user.click(screen.getByRole('checkbox', { name: '选择兑换码 SELECT-1' }));
@@ -641,7 +671,13 @@ test.each([0, 1])(
         } satisfies ApiResponses['pools']),
       'GET /api/manage/pools/1/codes?page=1&status=unclaimed&pageSize=20': () =>
         json({
-          counts: { all: completed ? 0 : 2, unclaimed: completed ? 0 : 2, unused: 0, used: 0 },
+          counts: { all: completed ? 0 : 2, unclaimed: completed ? 0 : 2, claimed: 0, redeemed: 0 },
+          summary: {
+            total: completed ? 0 : 2,
+            remaining: completed ? 0 : 2,
+            claimed: 0 + 0,
+            redeemed: 0,
+          },
           items: completed ? [] : [unclaimedCode, second],
           total: completed ? 0 : 2,
           page: 1,
@@ -651,7 +687,7 @@ test.each([0, 1])(
     });
     const user = userEvent.setup();
     renderManager('1');
-    await user.click(await screen.findByRole('button', { name: '未领取' }));
+    await user.click(await screen.findByRole('button', { name: '待领取' }));
     await screen.findByText(unclaimedCode.code);
     await user.click(screen.getByRole('checkbox', { name: '全选当前页' }));
     await user.click(screen.getByRole('button', { name: '批量删除' }));
@@ -680,7 +716,7 @@ test.each([0, 1])(
     expect(
       screen.getAllByRole('status').find((node) => node.classList.contains('notice'))!,
     ).toHaveTextContent(
-      skipped ? '已删除 1 个兑换码，跳过 1 个（已领取或不存在）。' : '已删除 2 个兑换码。',
+      skipped ? '已删除 1 个兑换码，跳过 1 个（已领取、已兑换或不存在）。' : '已删除 2 个兑换码。',
     );
     expect(screen.getByRole('button', { name: '批量删除' })).toBeDisabled();
     expect(screen.getByRole('checkbox', { name: '全选当前页' })).toBeDisabled();

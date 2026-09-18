@@ -36,7 +36,7 @@ export function RecordsTable({
   }, [queryKey]);
   const compact = filter === 'unclaimed';
   const selectable =
-    codes?.items.filter((row) => row.claimStatus === 'unclaimed').map((row) => row.id) ?? [];
+    codes?.items.filter((row) => row.status === 'unclaimed').map((row) => row.id) ?? [];
   const allSelected = selectable.length > 0 && selectable.every((id) => selectedIds.includes(id));
   return (
     <div
@@ -96,7 +96,7 @@ export function RecordsTable({
                     <input
                       type="checkbox"
                       aria-label={t('manage.selectCode', { code: row.code })}
-                      disabled={actionsDisabled || row.claimStatus !== 'unclaimed'}
+                      disabled={actionsDisabled || row.status !== 'unclaimed'}
                       checked={selectedIds.includes(row.id)}
                       onChange={() =>
                         onSelect(
@@ -119,14 +119,12 @@ export function RecordsTable({
                   </div>
                 </td>
                 <td>
-                  <span
-                    className={`record-status ${row.claimStatus === 'unclaimed' ? 'unclaimed' : row.userMarkedUsed ? 'used' : 'unused'}`}
-                  >
-                    {row.claimStatus === 'unclaimed'
+                  <span className={`record-status ${row.status}`}>
+                    {row.status === 'unclaimed'
                       ? t('common.unclaimed')
-                      : row.userMarkedUsed
-                        ? t('manage.used')
-                        : t('manage.unused')}
+                      : row.status === 'claimed'
+                        ? t('common.claimed')
+                        : t('manage.redeemed')}
                   </span>
                 </td>
                 {!compact && (
@@ -165,19 +163,23 @@ export function RecordsTable({
                         </dd>
                       </div>
                       <div>
+                        <dt>{t('manage.importedAt')}</dt>
+                        <dd>{dateTime(row.createdAt)}</dd>
+                      </div>
+                      <div>
                         <dt>{t('manage.claimedAt')}</dt>
                         <dd>{dateTime(row.claimedAt)}</dd>
                       </div>
                       <div>
-                        <dt>{t('manage.usedAt')}</dt>
-                        <dd>{dateTime(row.userMarkedUsedAt)}</dd>
+                        <dt>{t('manage.redeemedMarkedAt')}</dt>
+                        <dd>{dateTime(row.redeemedMarkedAt)}</dd>
                       </div>
                       <div className="records-full">
                         <dt>{t('manage.remark')}</dt>
                         <dd className="records-full-remark">{row.remark ?? '—'}</dd>
                       </div>
                     </dl>
-                    {row.claimStatus === 'unclaimed' && (
+                    {row.status === 'unclaimed' && (
                       <button
                         className="button secondary small bulk-delete-button"
                         disabled={actionsDisabled}

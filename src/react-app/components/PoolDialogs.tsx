@@ -5,7 +5,13 @@ import type { Message } from '../../shared/messages.ts';
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError, rpc } from '../api.ts';
 import { parseImport } from '../../shared/contracts.ts';
-import type { CodeRow, DeleteCodesResult, ImportResult, Pool } from '../../shared/api-types.ts';
+import type {
+  CodeRow,
+  DeleteCodesResult,
+  ImportResult,
+  RedeemedImportResult,
+  Pool,
+} from '../../shared/api-types.ts';
 import { Dialog, Icon, Notice } from './ui.tsx';
 
 // Dialog writes can outlive browser navigation. Give each effect setup its own
@@ -102,10 +108,10 @@ export function DeleteCodeDialog({
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const startRequest = useDialogRequest();
-  const [claimed, setClaimed] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
   const [error, setError] = useState<Message | null>(null);
   async function remove() {
-    if (busy || claimed) return;
+    if (busy || unavailable) return;
     const request = startRequest();
     if (!request) return;
     setBusy(true);
@@ -126,8 +132,8 @@ export function DeleteCodeDialog({
       if (e instanceof ApiError && e.code === 'CODE_NOT_FOUND') onDeleted();
       else {
         setError(toMessage(e));
-        if (e instanceof ApiError && e.code === 'CODE_ALREADY_CLAIMED') {
-          setClaimed(true);
+        if (e instanceof ApiError && e.code === 'CODE_NOT_AVAILABLE') {
+          setUnavailable(true);
           onRefresh();
         }
       }
@@ -148,7 +154,11 @@ export function DeleteCodeDialog({
         <button className="button secondary" autoFocus disabled={busy} onClick={onClose}>
           {t('common.cancel')}
         </button>
-        <button className="button danger" disabled={busy || claimed} onClick={() => void remove()}>
+        <button
+          className="button danger"
+          disabled={busy || unavailable}
+          onClick={() => void remove()}
+        >
           {busy ? t('manage.deleting') : t('manage.confirmDelete')}
         </button>
       </div>
@@ -224,10 +234,12 @@ export function ImportDialog({
   pool,
   onClose,
   onImported,
+  mode = 'codes',
 }: {
   pool: Pick<Pool, 'id' | 'name'>;
   onClose: () => void;
   onImported: () => void;
+  mode?: 'codes' | 'redeemed';
 }) {
   const { number, message } = useFormat();
   const { t } = useTranslation();
@@ -235,7 +247,7 @@ export function ImportDialog({
   const [busy, setBusy] = useState(false);
   const startRequest = useDialogRequest();
   const [error, setError] = useState<Message | null>(null);
-  const [result, setResult] = useState<ImportResult | null>(null);
+  const [result, setResult] = useState<ImportResult | RedeemedImportResult | null>(null);
   const count = text.split(/\r\n|\n|\r/).filter((line) => line.trim()).length;
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -252,15 +264,11 @@ export function ImportDialog({
     if (!request) return;
     setBusy(true);
     try {
-      const result = await api(
-        rpc.api.manage.pools[':id'].import.$post(
-          {
-            param: { id: String(pool.id) },
-            json: { text },
-          },
-          request,
-        ),
-      );
+      const input = { param: { id: String(pool.id) }, json: { text } };
+      const result =
+        mode === 'redeemed'
+          ? await api(rpc.api.manage.pools[':id'].redeemed.import.$post(input, request))
+          : await api(rpc.api.manage.pools[':id'].import.$post(input, request));
       if (!request.isCurrent()) return;
       setResult(result);
       onImported();
@@ -272,10 +280,15 @@ export function ImportDialog({
     }
   }
   return (
-    <Dialog title={t('manage.import')} onClose={onClose} locked={busy} wide>
+    <Dialog
+      title={t(mode === 'redeemed' ? 'manage.importRedeemed' : 'manage.import')}
+      onClose={onClose}
+      locked={busy}
+      wide
+    >
       <p className="muted">
         <Trans
-          i18nKey="manage.importHelp"
+          i18nKey={mode === 'redeemed' ? 'manage.importRedeemedHelp' : 'manage.importHelp'}
           values={{ name: pool.name }}
           components={{ strong: <strong /> }}
         />
@@ -304,10 +317,17 @@ export function ImportDialog({
         {result && (
           <div className="import-result">
             <Notice kind={result.failed ? 'info' : 'success'}>
-              {t('manage.importResult', {
-                succeeded: number(result.succeeded),
-                failed: number(result.failed),
-              })}
+              {'marked' in result
+                ? t('manage.redeemedImportResult', {
+                    marked: number(result.marked),
+                    already: number(result.alreadyRedeemed),
+                    removed: number(result.removedFromAvailable),
+                    failed: number(result.failed),
+                  })
+                : t('manage.importResult', {
+                    succeeded: number(result.succeeded),
+                    failed: number(result.failed),
+                  })}
             </Notice>
             {result.failures.length > 0 && (
               <div className="table-scroll failures">
@@ -343,7 +363,9 @@ export function ImportDialog({
             className="button primary"
             disabled={busy || count === 0 || count > 500 || result !== null}
           >
-            {busy ? t('manage.importing') : t('manage.startImport')}
+            {busy
+              ? t('manage.importing')
+              : t(mode === 'redeemed' ? 'manage.startRedeemedImport' : 'manage.startImport')}
             <Icon name="arrow" size={16} />
           </button>
         </div>

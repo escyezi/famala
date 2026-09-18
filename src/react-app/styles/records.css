@@ -6,6 +6,12 @@
 .pool-detail-page {
   gap: 10px;
 }
+/* These controls are disabled only during requests; keep their appearance stable. */
+.pool-page-header .pool-main-action:disabled,
+.records-toolbar .tabs button:disabled,
+.records-toolbar .refresh-button:disabled {
+  opacity: 1;
+}
 .pool-page-header {
   align-items: center;
   gap: 10px;
@@ -13,8 +19,7 @@
 .pool-page-title h1 {
   font-size: 20px;
 }
-.pool-page-header .pool-back,
-.pool-refresh {
+.pool-page-header .pool-back {
   margin: 0;
 }
 .pool-page-header .pool-overview-tools {
@@ -97,7 +102,15 @@
   border: 1px solid currentColor;
   border-right-color: transparent;
   border-radius: 50%;
-  animation: records-spin 0.7s linear infinite;
+  opacity: 0;
+  animation:
+    records-spinner-show 0s 200ms forwards,
+    records-spin 0.7s linear infinite;
+}
+@keyframes records-spinner-show {
+  to {
+    opacity: 1;
+  }
 }
 @keyframes records-spin {
   to {
@@ -257,10 +270,10 @@
 .record-status.unclaimed {
   color: #6e796e;
 }
-.record-status.unused {
+.record-status.claimed {
   color: #94621e;
 }
-.record-status.used {
+.record-status.redeemed {
   color: #28664d;
 }
 .records-table td.records-time {
@@ -431,6 +444,10 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .records-spinner {
-    animation: none;
+    animation: records-spinner-show 0s 200ms forwards;
   }
+}
+
+.pool-stats {
+  flex-wrap: wrap;
 }

@@ -62,7 +62,7 @@
     "preview": "npm run build && vite preview",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 migrations apply famala-db --local",
-    "predev": "npm run db:migrate"
+    "predev": "WRANGLER_HIDE_BANNER=true npm run db:migrate"
   },
   "type": "module"
 }

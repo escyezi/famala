@@ -2,7 +2,7 @@ import { errorBody } from '../shared/messages.ts';
 import { ApiException, validationError } from './errors.ts';
 import type { MiddlewareHandler } from 'hono';
 import { validator } from 'hono/validator';
-import { codePointLength, normalizeRemark } from '../shared/contracts.ts';
+import { normalizeRemark } from '../shared/contracts.ts';
 import type { AppEnv } from './types.ts';
 
 function object(value: unknown): Record<string, unknown> {
@@ -82,16 +82,7 @@ export const claimInput = validator('json', (value: unknown, c) => {
   };
 });
 
-export const usedInput = validator('json', (value: unknown, c) => {
-  const data = object(value);
-  const key = claimKey(data.claimKey);
-  if (typeof data.code !== 'string' || !data.code || codePointLength(data.code) > 100)
-    return c.json(errorBody('INVALID_CODE'), 400);
-  return { claimKey: key, code: data.code };
-});
-
-// Keep claimed for older clients; the manager uses the three disjoint states.
-type CodeFilter = 'all' | 'claimed' | 'unclaimed' | 'unused' | 'used';
+type CodeFilter = 'all' | 'claimed' | 'unclaimed' | 'redeemed';
 // Hono's default query input allows arbitrary strings/arrays. Narrow the public
 // RPC input to the values this validator actually accepts; keep parsed numbers
 // on the server side only.
@@ -115,11 +106,7 @@ export const codesQuery: MiddlewareHandler<
   const status = query.status?.[0] || 'all';
   if (
     (query.status && query.status.length !== 1) ||
-    (status !== 'all' &&
-      status !== 'claimed' &&
-      status !== 'unclaimed' &&
-      status !== 'unused' &&
-      status !== 'used')
+    (status !== 'all' && status !== 'claimed' && status !== 'unclaimed' && status !== 'redeemed')
   )
     throw new ApiException(400, 'INVALID_FILTER');
   const size = query.pageSize?.[0] ?? '50';

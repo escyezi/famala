@@ -1,5 +1,5 @@
 import type { Message } from '../shared/messages.ts';
-import type { ClaimRecord, UsedResult } from '../shared/contracts.ts';
+import type { ClaimRecord } from '../shared/contracts.ts';
 export const STORAGE_KEY = 'famala.claimedCodes';
 const CHANGE = 'famala:records';
 
@@ -13,11 +13,7 @@ function isRecord(value: unknown): value is ClaimRecord {
     typeof r.code === 'string' &&
     r.code.length > 0 &&
     typeof r.claimedAt === 'number' &&
-    Number.isFinite(r.claimedAt) &&
-    typeof r.userMarkedUsed === 'boolean' &&
-    (r.userMarkedUsed
-      ? typeof r.userMarkedUsedAt === 'number' && Number.isFinite(r.userMarkedUsedAt)
-      : r.userMarkedUsedAt === null)
+    Number.isFinite(r.claimedAt)
   );
 }
 export function readRecords(): { records: ClaimRecord[]; warning: Message | null } {
@@ -31,7 +27,15 @@ export function readRecords(): { records: ClaimRecord[]; warning: Message | null
       new Set(parsed.map((r) => r.claimKey)).size !== parsed.length
     )
       throw new Error();
-    return { records: parsed, warning: null };
+    return {
+      records: parsed.map(({ poolName, claimKey, code, claimedAt }) => ({
+        poolName,
+        claimKey,
+        code,
+        claimedAt,
+      })),
+      warning: null,
+    };
   } catch {
     return {
       records: [],
@@ -59,13 +63,6 @@ export function saveClaim(record: ClaimRecord) {
     const existing = records.find((r) => r.claimKey === record.claimKey);
     if (existing && existing.code !== record.code) return { code: 'STORAGE_CONFLICT' };
     if (!existing) records.push(record);
-    return null;
-  });
-}
-export function saveUsed(record: ClaimRecord, used: UsedResult) {
-  return mutate((records) => {
-    const existing = records.find((r) => r.claimKey === record.claimKey && r.code === record.code);
-    if (existing) Object.assign(existing, used);
     return null;
   });
 }

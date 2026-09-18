@@ -26,7 +26,7 @@ export type ApiResponses = {
   validateClaim: InferResponseType<Api['claim']['validate']['$post'], 200>;
   config: InferResponseType<Api['config']['$get'], 200>;
   claim: InferResponseType<Api['claim']['$post'], 200>;
-  markUsed: InferResponseType<Api['claim']['used']['$post'], 200>;
+  importRedeemed: InferResponseType<PoolApi['redeemed']['import']['$post'], 200>;
 };
 
 type Handler = (init: RequestInit) => Response | Promise<Response>;
@@ -65,8 +65,6 @@ export const claimRecord = {
   poolName: '九月福利',
   code: 'WELCOME-001',
   claimedAt: 1_800_000_000_000,
-  userMarkedUsed: false,
-  userMarkedUsedAt: null,
 } satisfies ClaimRecord & ApiResponses['claim'];
 
 export const pool: Pool = {
@@ -78,6 +76,7 @@ export const pool: Pool = {
   total: 2,
   claimed: 0,
   remaining: 2,
+  redeemed: 0,
 };
 
 export const publicPool = {

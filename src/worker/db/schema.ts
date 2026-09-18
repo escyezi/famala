@@ -31,6 +31,7 @@ export const codePools = sqliteTable(
       .notNull()
       .references(() => distributorSpaces.id),
     name: text('name').notNull(),
+    description: text('description'),
     claimKey: text('claim_key').notNull().unique(),
     status: text('status', { enum: ['active', 'stopped'] })
       .notNull()
@@ -52,27 +53,27 @@ export const redemptionCodes = sqliteTable(
       .notNull()
       .references(() => codePools.id),
     code: text('code').notNull(),
-    claimStatus: text('claim_status', { enum: ['unclaimed', 'claimed'] })
+    status: text('status', { enum: ['unclaimed', 'claimed', 'redeemed'] })
       .notNull()
       .default('unclaimed'),
     claimedAt: integer('claimed_at'),
     remark: text('remark'),
-    userMarkedUsed: integer('user_marked_used', { mode: 'boolean' }).notNull().default(false),
-    userMarkedUsedAt: integer('user_marked_used_at'),
+    redeemedMarkedAt: integer('redeemed_marked_at'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => [
     uniqueIndex('codes_pool_code_unique').on(t.poolId, t.code),
-    index('codes_pool_status_idx').on(t.poolId, t.claimStatus),
+    index('codes_pool_status_idx').on(t.poolId, t.status),
     check('code_length_check', sql`length(${t.code}) BETWEEN 1 AND 100`),
     check('remark_length_check', sql`${t.remark} IS NULL OR length(${t.remark}) <= 500`),
+    check('code_status_check', sql`${t.status} IN ('unclaimed', 'claimed', 'redeemed')`),
     check(
       'claim_state_check',
-      sql`(${t.claimStatus} = 'unclaimed' AND ${t.claimedAt} IS NULL AND ${t.remark} IS NULL) OR (${t.claimStatus} = 'claimed' AND ${t.claimedAt} IS NOT NULL)`,
+      sql`(${t.status} != 'unclaimed' OR ${t.claimedAt} IS NULL) AND (${t.status} != 'claimed' OR ${t.claimedAt} IS NOT NULL) AND (${t.claimedAt} IS NOT NULL OR ${t.remark} IS NULL)`,
     ),
     check(
-      'used_state_check',
-      sql`(${t.userMarkedUsed} = 0 AND ${t.userMarkedUsedAt} IS NULL) OR (${t.userMarkedUsed} = 1 AND ${t.userMarkedUsedAt} IS NOT NULL AND ${t.claimStatus} = 'claimed')`,
+      'redeemed_state_check',
+      sql`(${t.status} = 'redeemed' AND ${t.redeemedMarkedAt} IS NOT NULL) OR (${t.status} != 'redeemed' AND ${t.redeemedMarkedAt} IS NULL)`,
     ),
   ],
 );
