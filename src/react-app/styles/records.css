@@ -1,0 +1,436 @@
+/* Pool detail: stable chrome and a compact, independently scrolling table. */
+.manager-main.manager-detail-main {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+.pool-detail-page {
+  gap: 10px;
+}
+.pool-page-header {
+  align-items: center;
+  gap: 10px;
+}
+.pool-page-title h1 {
+  font-size: 20px;
+}
+.pool-page-header .pool-back,
+.pool-refresh {
+  margin: 0;
+}
+.pool-page-header .pool-overview-tools {
+  flex-shrink: 0;
+}
+.pool-detail-page .pool-overview {
+  padding: 0 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.pool-overview-main {
+  gap: 8px 16px;
+}
+.pool-stats {
+  gap: 20px;
+}
+.pool-stats > div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.pool-stats dt {
+  font-size: 12px;
+}
+.pool-stats dd,
+.pool-stats .remaining-stat dd {
+  margin: 0;
+  font-size: 16px;
+}
+.pool-created {
+  margin: 0;
+  font-size: 11px;
+}
+.pool-detail-page .pool-records {
+  padding: 0;
+  overflow: hidden;
+}
+.records-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 14px;
+  min-height: 46px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #e3e9e1;
+  flex-wrap: wrap;
+}
+.records-toolbar h2 {
+  font-size: 14px;
+  margin: 0;
+}
+.records-toolbar .tabs {
+  gap: 16px;
+  align-self: stretch;
+}
+.records-toolbar .tabs button {
+  position: relative;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 42px;
+  font-size: 12px;
+  color: var(--color-workspace-muted);
+}
+.records-toolbar .tabs button.active {
+  color: var(--color-primary);
+}
+.records-tab-count {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.records-spinner {
+  position: absolute;
+  right: -9px;
+  top: 6px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: records-spin 0.7s linear infinite;
+}
+@keyframes records-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.records-bulk-slot {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-left: auto;
+  min-height: 42px;
+  font-size: 11px;
+}
+.records-bulk-slot .button {
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+.records-feedback {
+  min-height: 24px;
+  padding: 3px 14px;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--color-workspace-muted);
+}
+.records-feedback .text-button {
+  font-size: inherit;
+  padding: 0;
+  flex-shrink: 0;
+}
+.pool-records > .notice {
+  margin: 0 14px 8px;
+}
+.pool-records .pool-codes-scroll {
+  min-height: 100px;
+  scrollbar-gutter: stable;
+}
+.pool-codes-scroll .records-table {
+  table-layout: fixed;
+  min-width: 640px;
+}
+.records-select-col {
+  width: 38px;
+}
+.records-code-col {
+  width: 35%;
+}
+.records-status-col {
+  width: 100px;
+}
+.records-time-col {
+  width: 135px;
+}
+.records-detail-col {
+  width: 55px;
+}
+.unclaimed-table .records-code-col {
+  width: auto;
+}
+.unclaimed-table .records-status-col {
+  width: 120px;
+}
+.pool-codes-scroll .records-table th {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 11px;
+}
+.pool-codes-scroll .records-table td {
+  height: 36px;
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--color-text);
+}
+.records-table tbody > tr:hover {
+  background: #f7f9f5;
+}
+.records-code-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.records-code-inline > code {
+  min-width: 0;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+.records-code-inline .copy-action {
+  flex-shrink: 0;
+}
+.records-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-workspace-muted);
+  cursor: pointer;
+}
+.records-icon:hover:not(:disabled) {
+  background: #eaf2eb;
+  color: var(--color-primary);
+}
+.records-icon:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.records-icon:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.records-copy {
+  position: relative;
+}
+.records-copy .copy-button-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.records-code-inline .copy-action:has(.copy-fallback-input) {
+  max-width: 60%;
+}
+.records-code-inline .copy-fallback-input {
+  max-width: 100%;
+}
+.record-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.record-status::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.record-status.unclaimed {
+  color: #6e796e;
+}
+.record-status.unused {
+  color: #94621e;
+}
+.record-status.used {
+  color: #28664d;
+}
+.records-table td.records-time {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-workspace-muted);
+  white-space: nowrap;
+}
+.records-remark {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pool-codes-scroll .records-expanded td {
+  height: auto;
+  padding: 12px 20px;
+  background: #f7f9f5;
+}
+.records-expanded dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 20px;
+  margin: 0 0 8px;
+}
+.records-expanded dl > div {
+  display: flex;
+  gap: 16px;
+  min-width: 0;
+}
+.records-expanded dt {
+  flex-shrink: 0;
+  color: var(--color-workspace-muted);
+}
+.records-expanded dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.records-expanded .records-full {
+  grid-column: 1 / -1;
+}
+.records-full-remark {
+  white-space: pre-wrap;
+}
+.records-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px;
+  border-top: 1px solid #e3e9e1;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.records-pagination .actions {
+  gap: 8px;
+}
+.records-pagination select {
+  min-height: 28px;
+  padding: 3px 6px;
+  border: 1px solid #e3e9e1;
+  border-radius: 5px;
+  background: var(--color-surface);
+  font-size: 12px;
+}
+.pool-records .records-note {
+  margin: 0;
+  padding: 0 14px 8px;
+  font-size: 11px;
+}
+.records-skeleton > div {
+  height: 36px;
+  display: grid;
+  grid-template-columns: 2fr 1fr 2fr;
+  gap: 30px;
+  align-items: center;
+  padding: 0 14px;
+  border-bottom: 1px solid #edf0e8;
+}
+.records-skeleton span {
+  height: 8px;
+  width: 70%;
+  border-radius: 3px;
+  background: #e9ede7;
+}
+@media (max-width: 1100px) {
+  .records-bulk-slot {
+    min-width: 0;
+    gap: 6px;
+  }
+  .records-toolbar {
+    gap: 12px;
+  }
+  .records-toolbar .tabs {
+    gap: 12px;
+  }
+}
+@media (max-width: 760px) {
+  .pool-page-header {
+    flex-wrap: wrap;
+  }
+  .pool-page-header .pool-overview-tools {
+    order: 3;
+    width: 100%;
+  }
+  .pool-page-header .pool-overview-tools .actions {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .pool-page-header .pool-overview-tools .pool-main-action {
+    width: auto;
+  }
+  .pool-created {
+    font-size: 10px;
+  }
+  .records-toolbar {
+    gap: 0 12px;
+    padding: 0 10px;
+  }
+  .records-toolbar .tabs {
+    order: 3;
+    width: 100%;
+    justify-content: space-between;
+  }
+  .records-bulk-slot {
+    min-height: 36px;
+  }
+  .records-toolbar h2 {
+    line-height: 36px;
+  }
+  .records-pagination {
+    flex-wrap: wrap;
+    padding: 6px 10px;
+  }
+  .records-expanded dl {
+    grid-template-columns: 1fr;
+  }
+  .records-expanded .records-full {
+    grid-column: auto;
+  }
+  .pool-codes-scroll .unclaimed-table {
+    min-width: 340px;
+  }
+  .unclaimed-table .records-status-col {
+    width: 80px;
+  }
+}
+@media (pointer: coarse) {
+  .pool-detail-page button,
+  .records-pagination select {
+    min-height: 44px;
+  }
+  .pool-detail-page .records-icon {
+    min-width: 44px;
+  }
+  .pool-codes-scroll .records-table td {
+    height: 48px;
+  }
+  .records-table .code-select-cell {
+    padding: 0;
+  }
+  .records-table .code-select-cell input {
+    width: 24px;
+    height: 44px;
+    margin: 0 7px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .records-spinner {
+    animation: none;
+  }
+}

@@ -2,11 +2,38 @@ import { useFormat } from '../i18n/format.ts';
 import { useTranslation, Trans } from 'react-i18next';
 import { toMessage } from '../../shared/messages.ts';
 import type { Message } from '../../shared/messages.ts';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, ApiError, rpc } from '../api.ts';
 import { parseImport } from '../../shared/contracts.ts';
 import type { CodeRow, DeleteCodesResult, ImportResult, Pool } from '../../shared/api-types.ts';
 import { Dialog, Icon, Notice } from './ui.tsx';
+
+// Dialog writes can outlive browser navigation. Give each effect setup its own
+// cancellation scope so late responses cannot publish results or expire a new session.
+function useDialogRequest() {
+  const lifetime = useRef<{ active: boolean; request: AbortController | null } | null>(null);
+  useEffect(() => {
+    const scope = { active: true, request: null as AbortController | null };
+    lifetime.current = scope;
+    return () => {
+      scope.active = false;
+      scope.request?.abort();
+    };
+  }, []);
+  return () => {
+    const scope = lifetime.current;
+    if (!scope?.active || scope.request) return null;
+    const controller = new AbortController();
+    scope.request = controller;
+    return {
+      init: { signal: controller.signal },
+      isCurrent: () => scope.active && lifetime.current === scope && !controller.signal.aborted,
+      finish: () => {
+        if (scope.request === controller) scope.request = null;
+      },
+    };
+  };
+}
 
 export function DeletePoolDialog({
   pool,
@@ -19,20 +46,26 @@ export function DeletePoolDialog({
 }) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
+  const startRequest = useDialogRequest();
   const [error, setError] = useState<Message | null>(null);
   async function remove() {
     if (busy) return;
+    const request = startRequest();
+    if (!request) return;
     setBusy(true);
     setError(null);
     try {
-      await api(rpc.api.manage.pools[':id'].$delete({ param: { id: String(pool.id) } }));
+      await api(rpc.api.manage.pools[':id'].$delete({ param: { id: String(pool.id) } }, request));
+      if (!request.isCurrent()) return;
       onDeleted();
     } catch (e) {
+      if (!request.isCurrent()) return;
       // A retry after a lost response, or deletion in another tab, is already complete.
       if (e instanceof ApiError && e.status === 404) onDeleted();
       else setError(toMessage(e));
     } finally {
-      setBusy(false);
+      if (request.isCurrent()) setBusy(false);
+      request.finish();
     }
   }
   return (
@@ -68,20 +101,28 @@ export function DeleteCodeDialog({
 }) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
+  const startRequest = useDialogRequest();
   const [claimed, setClaimed] = useState(false);
   const [error, setError] = useState<Message | null>(null);
   async function remove() {
     if (busy || claimed) return;
+    const request = startRequest();
+    if (!request) return;
     setBusy(true);
     setError(null);
     try {
       await api(
-        rpc.api.manage.pools[':id'].codes[':codeId'].$delete({
-          param: { id: String(pool.id), codeId: String(code.id) },
-        }),
+        rpc.api.manage.pools[':id'].codes[':codeId'].$delete(
+          {
+            param: { id: String(pool.id), codeId: String(code.id) },
+          },
+          request,
+        ),
       );
+      if (!request.isCurrent()) return;
       onDeleted();
     } catch (e) {
+      if (!request.isCurrent()) return;
       if (e instanceof ApiError && e.code === 'CODE_NOT_FOUND') onDeleted();
       else {
         setError(toMessage(e));
@@ -91,7 +132,8 @@ export function DeleteCodeDialog({
         }
       }
     } finally {
-      setBusy(false);
+      if (request.isCurrent()) setBusy(false);
+      request.finish();
     }
   }
   return (
@@ -127,24 +169,31 @@ export function DeleteCodesDialog({
 }) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
+  const startRequest = useDialogRequest();
   const [error, setError] = useState<Message | null>(null);
   async function remove() {
     if (busy) return;
+    const request = startRequest();
+    if (!request) return;
     setBusy(true);
     setError(null);
     try {
-      onDeleted(
-        await api(
-          rpc.api.manage.pools[':id'].codes.$delete({
+      const result = await api(
+        rpc.api.manage.pools[':id'].codes.$delete(
+          {
             param: { id: String(pool.id) },
             json: { ids: codes.map((code) => code.id) },
-          }),
+          },
+          request,
         ),
       );
+      if (!request.isCurrent()) return;
+      onDeleted(result);
     } catch (e) {
-      setError(toMessage(e));
+      if (request.isCurrent()) setError(toMessage(e));
     } finally {
-      setBusy(false);
+      if (request.isCurrent()) setBusy(false);
+      request.finish();
     }
   }
   return (
@@ -184,6 +233,7 @@ export function ImportDialog({
   const { t } = useTranslation();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  const startRequest = useDialogRequest();
   const [error, setError] = useState<Message | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const count = text.split(/\r\n|\n|\r/).filter((line) => line.trim()).length;
@@ -198,21 +248,27 @@ export function ImportDialog({
       setError(toMessage(e));
       return;
     }
+    const request = startRequest();
+    if (!request) return;
     setBusy(true);
     try {
-      setResult(
-        await api(
-          rpc.api.manage.pools[':id'].import.$post({
+      const result = await api(
+        rpc.api.manage.pools[':id'].import.$post(
+          {
             param: { id: String(pool.id) },
             json: { text },
-          }),
+          },
+          request,
         ),
       );
+      if (!request.isCurrent()) return;
+      setResult(result);
       onImported();
     } catch (e) {
-      setError(toMessage(e));
+      if (request.isCurrent()) setError(toMessage(e));
     } finally {
-      setBusy(false);
+      if (request.isCurrent()) setBusy(false);
+      request.finish();
     }
   }
   return (
@@ -309,24 +365,32 @@ export function PoolNameDialog({
   const { t } = useTranslation();
   const [name, setName] = useState(pool?.name ?? '');
   const [busy, setBusy] = useState(false);
+  const startRequest = useDialogRequest();
   const [error, setError] = useState<Message | null>(null);
   async function save(importNext: boolean) {
     if (busy || !name.trim()) return;
+    const request = startRequest();
+    if (!request) return;
     setBusy(true);
     setError(null);
     try {
       const json = { name: name.trim() };
       const result = pool
         ? await api(
-            rpc.api.manage.pools[':id'].name.$post({ param: { id: String(pool.id) }, json }),
+            rpc.api.manage.pools[':id'].name.$post(
+              { param: { id: String(pool.id) }, json },
+              request,
+            ),
           )
-        : await api(rpc.api.manage.pools.$post({ json }));
+        : await api(rpc.api.manage.pools.$post({ json }, request));
+      if (!request.isCurrent()) return;
       if (!pool && importNext && onImport) onImport({ id: result.id, name: json.name });
       else onSaved(result.id);
     } catch (e) {
-      setError(toMessage(e));
+      if (request.isCurrent()) setError(toMessage(e));
     } finally {
-      setBusy(false);
+      if (request.isCurrent()) setBusy(false);
+      request.finish();
     }
   }
   return (

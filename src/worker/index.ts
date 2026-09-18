@@ -282,7 +282,7 @@ const routes = app
         : undefined,
     );
     const db = drizzle(c.env.DB);
-    const [items, totals] = await db.batch([
+    const [items, totals, statistics] = await db.batch([
       db
         .select({
           id: redemptionCodes.id,
@@ -300,8 +300,22 @@ const routes = app
         .limit(pageSize)
         .offset((page - 1) * pageSize),
       db.select({ total: count() }).from(redemptionCodes).where(where),
+      db
+        .select({
+          all: count(),
+          unclaimed: poolColumns.remaining,
+          unused:
+            sql<number>`coalesce(sum(case when ${redemptionCodes.claimStatus} = 'claimed' and ${redemptionCodes.userMarkedUsed} = 0 then 1 else 0 end), 0)`.mapWith(
+              Number,
+            ),
+          used: sql<number>`coalesce(sum(case when ${redemptionCodes.claimStatus} = 'claimed' and ${redemptionCodes.userMarkedUsed} = 1 then 1 else 0 end), 0)`.mapWith(
+            Number,
+          ),
+        })
+        .from(redemptionCodes)
+        .where(eq(redemptionCodes.poolId, pool.id)),
     ]);
-    return c.json({ items, total: totals[0].total, page, pageSize }, 200);
+    return c.json({ items, total: totals[0].total, page, pageSize, counts: statistics[0] }, 200);
   })
   .delete('/api/manage/pools/:id/codes', deleteCodesInput, async (c) => {
     const pool = await ownedPool(c);

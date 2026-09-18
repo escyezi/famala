@@ -16,6 +16,15 @@ export function useFormat() {
           hour: '2-digit',
           minute: '2-digit',
         }).format(time);
+  const compactDateTime = (time: number | null) =>
+    time === null
+      ? '—'
+      : new Intl.DateTimeFormat(locale, {
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        }).format(time);
   const message = (value: Message | null | undefined) => {
     if (!value) return '';
     const code =
@@ -29,5 +38,5 @@ export function useFormat() {
       return t('errors.DUPLICATE_IN_BATCH', { firstLine: value.params?.firstLine ?? '—' });
     return t(`errors.${key}`);
   };
-  return { number, dateTime, message };
+  return { number, dateTime, compactDateTime, message };
 }

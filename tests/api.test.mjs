@@ -802,6 +802,7 @@ test('code filters partition inventory into unclaimed, unused and used with matc
       owner.cookie,
     );
     assert.equal(response.status, 200);
+    assert.deepEqual(response.body.counts, { all: 25, unclaimed: 23, unused: 1, used: 1 });
     return response.body;
   };
   const unused = await list('unused');
@@ -1059,4 +1060,22 @@ test('bulk deletion skips a code claimed just before the delete statement execut
   assert.equal(remaining.length, 1);
   assert.equal(remaining[0].code, issued.body.code);
   assert.equal(remaining[0].claimStatus, 'claimed');
+});
+
+test('record counts include an empty pool and exclude every other pool and space', async () => {
+  const owner = await space();
+  const outsider = await space();
+  const empty = await pool(owner.cookie);
+  const other = await pool(owner.cookie);
+  const foreign = await pool(outsider.cookie);
+  await imported(other, owner.cookie, 'OTHER-A\nOTHER-B');
+  await imported(foreign, outsider.cookie, 'FOREIGN');
+  const result = await request(`/api/manage/pools/${empty.id}/codes`, undefined, owner.cookie);
+  assert.deepEqual(result.body.counts, { all: 0, unclaimed: 0, unused: 0, used: 0 });
+  assert.equal(
+    (await request(`/api/manage/pools/${other.id}/codes`, undefined, outsider.cookie)).status,
+    404,
+  );
+  const own = await request(`/api/manage/pools/${other.id}/codes`, undefined, owner.cookie);
+  assert.deepEqual(own.body.counts, { all: 2, unclaimed: 2, unused: 0, used: 0 });
 });

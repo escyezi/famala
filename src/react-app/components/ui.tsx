@@ -9,6 +9,10 @@ export function Icon({
   size = 20,
 }: {
   name:
+    | 'chevronLeft'
+    | 'chevronRight'
+    | 'chevronUp'
+    | 'chevronDown'
     | 'gift'
     | 'arrow'
     | 'plus'
@@ -26,6 +30,10 @@ export function Icon({
   size?: number;
 }) {
   const paths = {
+    chevronLeft: <path d="m15 6-6 6 6 6" />,
+    chevronRight: <path d="m9 6 6 6-6 6" />,
+    chevronUp: <path d="m6 15 6-6 6 6" />,
+    chevronDown: <path d="m6 9 6 6 6-6" />,
     gift: (
       <>
         <path d="M3 8h18v4H3zM5 12v9h14v-9M12 8v13" />

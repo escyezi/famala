@@ -49,6 +49,12 @@ export async function apiTypeChecks() {
         query: { status },
       }),
     );
+    expectTypeOf(codes.counts).toEqualTypeOf<{
+      all: number;
+      unclaimed: number;
+      unused: number;
+      used: number;
+    }>();
     expectTypeOf(codes.items[0].userMarkedUsedAt).toEqualTypeOf<number | null>();
   }
   // Remark is optional; request input comes from validation, not a caller cast.

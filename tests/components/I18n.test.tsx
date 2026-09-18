@@ -227,7 +227,13 @@ test('component reactivity: import results and row reasons translate without los
 
 test('component reactivity: pagination and filter survive language changes without requests', async () => {
   const rows = (page: number) =>
-    json({ items: [], page, pageSize: 20, total: 45 } satisfies ApiResponses['codes']);
+    json({
+      counts: { all: 45, unclaimed: 0, unused: 0, used: 45 },
+      items: [],
+      page,
+      pageSize: 20,
+      total: 45,
+    } satisfies ApiResponses['codes']);
   const fetch = mockApi({
     'GET /api/manage/pools': () => json({ items: [pool] }),
     'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () => rows(1),
