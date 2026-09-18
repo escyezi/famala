@@ -333,7 +333,7 @@ test('component reactivity: language switch during claim defers widget recreatio
   await user.click(screen.getByRole('button', { name: '领取兑换码' }));
   await english();
   expect(widget.render).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole('button', { name: 'Claim code' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Claiming…' })).toBeDisabled();
   await act(async () => pending.resolve(json({ code: 'TURNSTILE_FAILED' }, 503)));
   await waitFor(() => expect(widget.render).toHaveBeenCalledTimes(2));
   expect(widget.render.mock.lastCall![1].language).toBe('en');

@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { BusinessError, toMessage } from '../../shared/messages.ts';
 import type { Message } from '../../shared/messages.ts';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Notice } from './ui.tsx';
+import { Icon, Notice } from './ui.tsx';
 
 declare global {
   interface Window {
@@ -92,7 +92,10 @@ export function Turnstile({
           sitekey: siteKey,
           action: 'claim',
           theme: 'light',
-          size: 'flexible',
+          size:
+            container.current.clientWidth > 0 && container.current.clientWidth < 300
+              ? 'compact'
+              : 'flexible',
           language,
           'response-field': false,
           callback: (token: string) => {
@@ -131,6 +134,12 @@ export function Turnstile({
   return (
     <div className="turnstile">
       <div ref={container} />
+      {verified && (
+        <p className="claim-verified" role="status">
+          <Icon name="check" size={15} />
+          {t('claim.verified')}
+        </p>
+      )}
       {!verified && !error && (
         <p className="field-help" role="status">
           {t('claim.verifying')}

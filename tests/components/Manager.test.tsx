@@ -63,7 +63,7 @@ test('创建并导入不等待列表刷新，导入失败可重试且不会重�
   await user.click(screen.getByRole('button', { name: '新建兑换码池' }));
   expect(screen.getByRole('button', { name: '创建并导入' })).toBeDisabled();
   await user.type(screen.getByLabelText('码池名称'), '  连续导入  ');
-  await user.type(screen.getByLabelText('码池说明（选填）'), '  请在月底前兑换\n每人一份  ');
+  await user.type(screen.getByLabelText('领取说明（选填）'), '  请在月底前兑换\n每人一份  ');
   await user.click(screen.getByLabelText('码池名称'));
   await user.keyboard('{Enter}');
   const dialog = await screen.findByRole('dialog', { name: '添加兑换码' });
@@ -160,7 +160,7 @@ test('只修改说明也能保存，重新打开后可清空', async () => {
   for (const next of ['新的说明\n兑换步骤', '']) {
     await user.click(await screen.findByRole('button', { name: '更多' }));
     await user.click(screen.getByRole('button', { name: '编辑码池' }));
-    const input = screen.getByLabelText('码池说明（选填）');
+    const input = screen.getByLabelText('领取说明（选填）');
     expect(input).toHaveValue(description);
     const save = screen.getByRole('button', { name: '保存修改' });
     expect(save).toBeDisabled();

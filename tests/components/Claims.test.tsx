@@ -34,13 +34,13 @@ test('领码前后展示纯文本说明并保留换行内容', async () => {
   const turnstile = mockTurnstile();
   const user = userEvent.setup();
   renderClaim();
-  const panel = await screen.findByRole('region', { name: '码池说明' });
+  const panel = await screen.findByRole('region', { name: '领取说明' });
   expect(panel.querySelector('p')?.textContent).toBe(description);
   expect(panel.querySelector('script')).toBeNull();
   await turnstile.trigger('callback', 'token');
   await user.click(screen.getByRole('button', { name: '领取兑换码' }));
   expect(await screen.findByText(claimRecord.code)).toBeVisible();
-  expect(panel).toBeVisible();
+  expect(screen.getByRole('region', { name: '领取说明' })).toBeVisible();
 });
 
 test('没有说明时不展示说明区域', async () => {
@@ -48,7 +48,7 @@ test('没有说明时不展示说明区域', async () => {
   mockTurnstile();
   renderClaim();
   await screen.findByRole('button', { name: '领取兑换码' });
-  expect(screen.queryByRole('region', { name: '码池说明' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: '领取说明' })).not.toBeInTheDocument();
 });
 
 test('验证通过后才能领取，重复点击只发出一次请求，结果在重新挂载后仍可查看', async () => {
@@ -64,6 +64,8 @@ test('验证通过后才能领取，重复点击只发出一次请求，结果�
   await user.type(screen.getByLabelText(/备注/), '谢谢开发者');
   await user.dblClick(submit);
   expect(submit).toBeDisabled();
+  expect(submit).toHaveAccessibleName('领取中…');
+  expect(submit).toHaveAttribute('aria-busy', 'true');
   expect(screen.getByLabelText(/备注/)).toBeDisabled();
   expect(claim).toHaveBeenCalledExactlyOnceWith(
     expect.objectContaining({
@@ -76,6 +78,11 @@ test('验证通过后才能领取，重复点击只发出一次请求，结果�
   );
   pending.resolve(json(claimRecord satisfies ApiResponses['claim']));
   expect(await screen.findByText(claimRecord.code)).toBeVisible();
+  expect(screen.getByRole('heading', { level: 1, name: '领取成功' })).toBeVisible();
+  expect(screen.getAllByText(claimRecord.poolName)).toHaveLength(1);
+  await user.click(screen.getByRole('button', { name: '复制兑换码' }));
+  expect(await navigator.clipboard.readText()).toBe(claimRecord.code);
+  expect(screen.getByRole('button', { name: '已复制' })).toBeVisible();
   await waitFor(() => expect(readRecords().records).toEqual([claimRecord]));
   expect(screen.queryByRole('button', { name: '领取兑换码' })).not.toBeInTheDocument();
 
@@ -185,6 +192,18 @@ test('网络失败提示发码结果可能丢失，必须重新验证才能重�
   await user.click(submit);
   expect(await screen.findByText(claimRecord.code)).toBeVisible();
   expect(JSON.parse(claim.mock.lastCall![0].body as string).turnstileToken).toBe('fresh-token');
+});
+
+test.each([
+  [246, 'compact'],
+  [398, 'flexible'],
+])('验证组件适配 %i 像素容器', async (width, size) => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(Number(width));
+  mockApi(publicRoutes);
+  const widget = mockTurnstile();
+  renderClaim();
+  await waitFor(() => expect(widget.render).toHaveBeenCalled());
+  expect(widget.render.mock.lastCall![1].size).toBe(size);
 });
 
 test('未配置人机验证时显示说明并禁止领取', async () => {

@@ -111,6 +111,7 @@ export function ClaimKeyDialog({
 }
 export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterKey: () => void }) {
   const { t } = useTranslation();
+  const { dateTime } = useFormat();
   const [pool, setPool] = useState<PublicPool | null>(null);
   const [config, setConfig] = useState<PublicConfig | null>(null);
   const [snapshot, setSnapshot] = useState(readRecords);
@@ -214,95 +215,119 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
       submitting.current = false;
     }
   }
+  const description = pool?.description ? (
+    <section className="claim-description" aria-label={t('claim.description')}>
+      <h2>{t('claim.description')}</h2>
+      <p>{pool.description}</p>
+    </section>
+  ) : null;
   return (
     <main className="claim-main">
-      <div className="claim-intro">
-        <span className="hero-icon">
-          <Icon name={record ? 'check' : 'gift'} size={34} />
-        </span>
-        <div className="eyebrow">{t('claim.eyebrow')}</div>
-        <h1>{pool?.name ?? record?.poolName ?? t('claim.submit')}</h1>
-        {record && <p className="muted">{t('claim.copyHelp')}</p>}
-      </div>
-      {pool?.description && (
-        <section className="claim-panel claim-description" aria-label={t('claim.description')}>
-          <h2>{t('claim.description')}</h2>
-          <p>{pool.description}</p>
-        </section>
-      )}
-      <Notice>{error}</Notice>
-      <Notice kind="info">{warning || snapshot.warning}</Notice>
-      {record ? (
-        <RecordCard key={`${record.claimKey}:${record.code}`} record={record} />
-      ) : !loaded ? (
-        <div className="empty-state">{t('claim.loading')}</div>
-      ) : !pool ? (
-        <div className="claim-panel">
-          {!poolMissing && <p>{t('claim.loadFailed')}</p>}
-          <div className="actions">
-            <button className="button secondary" onClick={() => setRevision((v) => v + 1)}>
-              {t('common.retry')}
-            </button>
-            <button className="button primary" onClick={onEnterKey}>
-              {t('claim.enterAgain')}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <section className="claim-panel">
-          <div className={`claim-status-banner ${distributionState}`} role="status">
-            <span className="claim-status-dot" aria-hidden="true" />
-            <span>{distributionLabel}</span>
-          </div>
-          <form onSubmit={claim}>
-            <label htmlFor="remark">
-              {t('claim.remark')}
-              <span className="muted">{t('claim.optionalCount', { count: length })}</span>
-            </label>
-            <textarea
-              id="remark"
-              rows={3}
-              placeholder={t('claim.remarkPlaceholder')}
-              value={remark}
-              onChange={(e) => setRemark(e.target.value)}
-              disabled={busy}
+      <article className="claim-card">
+        <header className="claim-intro">
+          <span className="claim-hero-icon">
+            <Icon name={record ? 'check' : 'gift'} size={23} />
+          </span>
+          <h1 aria-live="polite">
+            {record ? t('claim.success') : (pool?.name ?? t('claim.submit'))}
+          </h1>
+          {record ? (
+            <p className="claim-pool-name">{pool?.name ?? record.poolName}</p>
+          ) : pool ? (
+            <div className={`claim-distribution ${distributionState}`} role="status">
+              <span className="claim-status-dot" aria-hidden="true" />
+              {distributionLabel}
+            </div>
+          ) : null}
+        </header>
+        <Notice>{error}</Notice>
+        <Notice kind="info">{warning || snapshot.warning}</Notice>
+        {record ? (
+          <div className="claim-result" key={`${record.claimKey}:${record.code}`}>
+            <div className="claim-result-code">
+              <span>{t('claim.yourCode')}</span>
+              <code className={codePointLength(record.code) > 32 ? 'claim-long-code' : undefined}>
+                {record.code}
+              </code>
+            </div>
+            <p className="claim-time">
+              {t('claim.claimedAt', { date: dateTime(record.claimedAt) })}
+            </p>
+            <CopyButton
+              value={record.code}
+              label={t('common.copyCode')}
+              className="button primary full claim-copy-button"
             />
-            {length > 500 && <Notice>{t('claim.remarkTooLong')}</Notice>}
-            {available && config?.turnstileSiteKey && (
-              <Turnstile
-                busy={busy}
-                key={attempt}
-                siteKey={config.turnstileSiteKey}
-                onToken={setToken}
+            <p className="claim-footnote">
+              <Icon name="history" size={14} />
+              <span>{t('claim.saveWarning')}</span>
+            </p>
+            {description}
+          </div>
+        ) : !loaded ? (
+          <div className="empty-state">{t('claim.loading')}</div>
+        ) : !pool ? (
+          <div className="claim-unavailable">
+            {!poolMissing && <p>{t('claim.loadFailed')}</p>}
+            <div className="actions">
+              <button className="button secondary" onClick={() => setRevision((v) => v + 1)}>
+                {t('common.retry')}
+              </button>
+              <button className="button primary" onClick={onEnterKey}>
+                {t('claim.enterAgain')}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="claim-form-panel">
+            {description}
+            <form onSubmit={claim}>
+              <label htmlFor="remark">
+                {t('claim.remark')}
+                <span className="muted">{t('claim.optionalCount', { count: length })}</span>
+              </label>
+              <textarea
+                id="remark"
+                rows={2}
+                placeholder={t('claim.remarkPlaceholder')}
+                value={remark}
+                onChange={(e) => setRemark(e.target.value)}
+                disabled={busy}
               />
+              {length > 500 && <Notice>{t('claim.remarkTooLong')}</Notice>}
+              {available && config?.turnstileSiteKey && (
+                <Turnstile
+                  busy={busy}
+                  key={attempt}
+                  siteKey={config.turnstileSiteKey}
+                  onToken={setToken}
+                />
+              )}
+              {available && config && !config.turnstileSiteKey && (
+                <Notice>{t('claim.unconfigured')}</Notice>
+              )}
+              <button
+                className="button primary full claim-button"
+                disabled={!available || !token || busy || length > 500}
+                aria-busy={busy}
+              >
+                {busy && <span className="claim-spinner" aria-hidden="true" />}
+                {busy ? t('claim.claiming') : t('claim.submit')}
+                {available && !busy && <Icon name="arrow" size={18} />}
+              </button>
+            </form>
+            {!available && (
+              <button className="text-button full" onClick={() => setRevision((v) => v + 1)}>
+                {t('claim.refresh')}
+              </button>
             )}
-            {available && config && !config.turnstileSiteKey && (
-              <Notice>{t('claim.unconfigured')}</Notice>
-            )}
-            <button
-              className="button primary full claim-button"
-              disabled={!available || !token || busy || length > 500}
-              aria-busy={busy}
-            >
-              {t('claim.submit')}
-              {busy ? (
-                <span className="claim-spinner" aria-hidden="true" />
-              ) : available ? (
-                <Icon name="arrow" size={18} />
-              ) : null}
-            </button>
-          </form>
-          {!available && (
-            <button className="text-button full" onClick={() => setRevision((v) => v + 1)}>
-              {t('claim.refresh')}
-            </button>
-          )}
-        </section>
-      )}
-      <p className="claim-footnote">
-        <Icon name="history" size={15} />
-        {t('claim.saveNote')}
-      </p>
+            <p className="claim-footnote">
+              <Icon name="history" size={14} />
+              <span>{t('claim.saveNote')}</span>
+            </p>
+          </div>
+        )}
+      </article>
     </main>
   );
 }
