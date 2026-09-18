@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useEffect, useId, useRef, useState } from 'react';
 
 export function PoolActionsMenu({
@@ -13,6 +14,7 @@ export function PoolActionsMenu({
   onStatus: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -59,19 +61,24 @@ export function PoolActionsMenu({
         aria-controls={panelId}
         onClick={() => setOpen((value) => !value)}
       >
-        更多
+        {t('manage.more')}
       </button>
       {open && (
-        <div className="pool-actions-panel" id={panelId} role="group" aria-label="码池操作">
+        <div
+          className="pool-actions-panel"
+          id={panelId}
+          role="group"
+          aria-label={t('manage.actions')}
+        >
           <button disabled={busy} onClick={() => choose(onRename)}>
-            修改名称
+            {t('manage.rename')}
           </button>
           <button disabled={busy} onClick={() => choose(onStatus)}>
-            {stopped ? '恢复发放' : '停止发放'}
+            {stopped ? t('manage.resume') : t('manage.stop')}
           </button>
           <div className="pool-actions-danger">
             <button disabled={busy} onClick={() => choose(onDelete)}>
-              删除码池
+              {t('manage.delete')}
             </button>
           </div>
         </div>

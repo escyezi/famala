@@ -33,7 +33,7 @@ test('新建空间后必须确认已保存 Key 才能进入管理页', async () 
 test('登录失败保留输入并允许重试，成功时提交去掉首尾空白的 Key', async () => {
   const login = vi
     .fn()
-    .mockImplementationOnce(() => json({ error: '发码 Key 无效' }, 401))
+    .mockImplementationOnce(() => json({ code: 'INVALID_DISTRIBUTOR_KEY' }, 401))
     .mockImplementationOnce(() => json(session satisfies ApiResponses['login']));
   const fetchMock = mockApi({ 'POST /api/login': login });
   const user = userEvent.setup();

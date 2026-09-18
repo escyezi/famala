@@ -1,4 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { BusinessError, toMessage } from '../../shared/messages.ts';
+import type { Message } from '../../shared/messages.ts';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Notice } from './ui.tsx';
 
 declare global {
@@ -20,7 +23,7 @@ function loadScript() {
       const timeout = setTimeout(() => {
         script.remove();
         loading = undefined;
-        reject(new Error('验证组件加载超时，请重试'));
+        reject(new BusinessError('WIDGET_LOAD_TIMEOUT'));
       }, 15000);
       script.onload = () => {
         clearTimeout(timeout);
@@ -30,7 +33,7 @@ function loadScript() {
         clearTimeout(timeout);
         script.remove();
         loading = undefined;
-        reject(new Error('验证组件加载失败，请检查网络后重试'));
+        reject(new BusinessError('WIDGET_LOAD_FAILED'));
       };
       document.head.appendChild(script);
     });
@@ -39,25 +42,39 @@ function loadScript() {
 export function Turnstile({
   siteKey,
   onToken,
+  busy = false,
 }: {
   siteKey: string;
+  busy?: boolean;
   onToken: (token: string) => void;
 }) {
+  const { t, i18n } = useTranslation();
+  const locale = i18n.resolvedLanguage === 'en' ? 'en' : 'zh-cn';
+  const [language, setLanguage] = useState(locale);
   const container = useRef<HTMLDivElement>(null);
   const callback = useRef(onToken);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<Message | null>(null);
   const [verified, setVerified] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
+  // Freeze widget configuration until an in-flight claim finishes.
+  if (!busy && language !== locale) {
+    setLanguage(locale);
+    setError(null);
+    setVerified(false);
+  }
+  useLayoutEffect(() => {
     callback.current = onToken;
   }, [onToken]);
+  useLayoutEffect(() => {
+    callback.current('');
+  }, [language, siteKey, attempt]);
   useEffect(() => {
     let cancelled = false;
     let widget: string | undefined;
     const timeout = setTimeout(() => {
-      if (!cancelled) setError('人机验证等待时间较长，请重试');
+      if (!cancelled) setError({ code: 'WIDGET_WAIT_TIMEOUT' });
     }, 20000);
-    function fail(message: string) {
+    function fail(message: Message) {
       if (cancelled) return;
       clearTimeout(timeout);
       callback.current('');
@@ -69,54 +86,54 @@ export function Turnstile({
         if (cancelled || !container.current) return;
         if (!window.turnstile) {
           loading = undefined;
-          throw new Error('验证组件未就绪，请重试');
+          throw new BusinessError('WIDGET_NOT_READY');
         }
         widget = window.turnstile.render(container.current, {
           sitekey: siteKey,
           action: 'claim',
           theme: 'light',
           size: 'flexible',
-          language: 'zh-cn',
+          language,
           'response-field': false,
           callback: (token: string) => {
             if (!cancelled) {
               clearTimeout(timeout);
-              setError('');
+              setError(null);
               setVerified(true);
               callback.current(token);
             }
           },
           'expired-callback': () => {
-            fail('验证已过期，请重新验证');
+            fail({ code: 'WIDGET_EXPIRED' });
           },
           'error-callback': (code: string) => {
             if (!cancelled) {
               console.warn('Turnstile verification failed:', code);
-              fail('人机验证失败，请重新验证');
+              fail({ code: 'WIDGET_FAILED' });
             }
             return true;
           },
           'timeout-callback': () => {
-            fail('验证超时，请重新验证');
+            fail({ code: 'WIDGET_TIMEOUT' });
           },
-          'unsupported-callback': () => fail('当前浏览器不支持人机验证，请使用其他浏览器打开'),
+          'unsupported-callback': () => fail({ code: 'WIDGET_UNSUPPORTED' }),
         });
       })
       .catch((e: Error) => {
-        fail(e.message);
+        fail(toMessage(e));
       });
     return () => {
       cancelled = true;
       clearTimeout(timeout);
       if (widget) window.turnstile?.remove(widget);
     };
-  }, [siteKey, attempt]);
+  }, [siteKey, attempt, language]);
   return (
     <div className="turnstile">
       <div ref={container} />
       {!verified && !error && (
         <p className="field-help" role="status">
-          正在进行人机验证，通过后即可领取…
+          {t('claim.verifying')}
         </p>
       )}
       {error && (
@@ -125,14 +142,15 @@ export function Turnstile({
           <button
             type="button"
             className="text-button"
+            disabled={busy}
             onClick={() => {
               callback.current('');
               setVerified(false);
-              setError('');
+              setError(null);
               setAttempt((v) => v + 1);
             }}
           >
-            重新验证
+            {t('claim.verifyAgain')}
           </button>
         </>
       )}

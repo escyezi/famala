@@ -67,9 +67,18 @@ async function request(
     },
     bindings,
   );
+  const body = await response.json();
+  if (!response.ok) {
+    assert.equal(typeof body.code, 'string', `${method} ${path} needs an error code`);
+    assert.equal(Object.hasOwn(body, 'error'), false);
+    assert.ok(Object.keys(body).every((key) => key === 'code' || key === 'params'));
+  }
+  if (Array.isArray(body.failures)) {
+    for (const failure of body.failures) assert.equal(Object.hasOwn(failure, 'reason'), false);
+  }
   return {
     status: response.status,
-    body: await response.json(),
+    body,
     cookie: response.headers.get('set-cookie')?.split(';')[0],
     headers: response.headers,
   };
@@ -400,14 +409,12 @@ test('empty pools and partial import: names, original line numbers, Unicode, dup
   );
   assert.equal(result.status, 200);
   assert.equal(result.body.succeeded, 3);
-  assert.deepEqual(
-    result.body.failures.map((r) => [r.line, r.reason]),
-    [
-      [3, '与本批第 1 行重复'],
-      [4, '超过 100 字'],
-    ],
-  );
+  assert.deepEqual(result.body.failures, [
+    { line: 3, code: 'A', reasonCode: 'DUPLICATE_IN_BATCH', params: { firstLine: 1 } },
+    { line: 4, code: 'x'.repeat(101), reasonCode: 'CODE_TOO_LONG' },
+  ]);
   const again = await imported(p, owner.cookie, 'A\nB');
+  assert.equal(again.body.failures[0].reasonCode, 'DUPLICATE_IN_POOL');
   assert.equal(again.body.succeeded, 1);
   assert.equal(again.body.failed, 1);
   const excessive = await imported(
@@ -713,4 +720,70 @@ test('RPC validators reject untyped callers with invalid body and query fields',
   assert.equal((await request('/api/claim/used', { claimKey: p.claimKey, code: 42 })).status, 400);
   assert.equal((await claim(p, { turnstileToken: 42 })).status, 400);
   assert.equal(verificationCalls, 0);
+});
+
+test('controlled errors expose only stable codes and parameters', async () => {
+  const owner = await space();
+  const p = await pool(owner.cookie, 'I18N contract');
+  const cases = [
+    [await request('/api/login', { key: 'invalid' }), 401, 'INVALID_DISTRIBUTOR_KEY'],
+    [await request('/api/manage/session'), 401, 'UNAUTHORIZED'],
+    [await request('/api/manage/pools', { name: '' }, owner.cookie), 400, 'POOL_NAME_REQUIRED'],
+    [
+      await request('/api/manage/pools', { name: 'I18N contract' }, owner.cookie),
+      409,
+      'POOL_NAME_EXISTS',
+    ],
+    [await request('/api/claim/validate', { claimKey: 'invalid' }), 404, 'INVALID_CLAIM_KEY'],
+    [await imported(p, owner.cookie, ''), 400, 'IMPORT_EMPTY'],
+    [
+      await imported(p, owner.cookie, Array.from({ length: 501 }, () => 'X').join('\n')),
+      400,
+      'IMPORT_LIMIT',
+    ],
+    [
+      await request(`/api/manage/pools/${p.id}/codes?page=0`, undefined, owner.cookie),
+      400,
+      'INVALID_PAGE',
+    ],
+    [await request('/api/no-such-route'), 404, 'NOT_FOUND'],
+    [
+      await request('/api/spaces', {}, undefined, env, { Origin: 'https://other.example' }),
+      403,
+      'CROSS_SITE_REQUEST',
+    ],
+    [
+      await request('/api/spaces', {}, undefined, env, { 'Content-Type': 'text/plain' }),
+      415,
+      'JSON_REQUIRED',
+    ],
+    [
+      await request('/api/spaces', { text: 'x'.repeat(1024 * 1024) }, undefined, env, {
+        'Content-Length': String(1024 * 1024 + 11),
+      }),
+      413,
+      'BODY_TOO_LARGE',
+    ],
+  ];
+  for (const [result, status, code] of cases) {
+    assert.equal(result.status, status);
+    assert.deepEqual(result.body, { code });
+  }
+  const malformed = await app.request(
+    'https://famala.example/api/login',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{broken',
+    },
+    env,
+  );
+  assert.equal(malformed.status, 400);
+  assert.deepEqual(await malformed.json(), { code: 'INVALID_JSON' });
+  const unavailable = await request('/api/manage/pools', undefined, owner.cookie, {
+    ...env,
+    DB: null,
+  });
+  assert.equal(unavailable.status, 500);
+  assert.deepEqual(unavailable.body, { code: 'SERVICE_UNAVAILABLE' });
 });

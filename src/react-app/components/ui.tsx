@@ -1,3 +1,6 @@
+import { useFormat } from '../i18n/format.ts';
+import { useTranslation } from 'react-i18next';
+import type { Message } from '../../shared/messages.ts';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -95,6 +98,7 @@ export function Dialog({
   locked?: boolean;
   wide?: boolean;
 }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
   useEffect(() => {
@@ -118,7 +122,7 @@ export function Dialog({
       <div className="dialog-head">
         <h2 id={id}>{title}</h2>
         {!locked && (
-          <button className="icon-button" aria-label="关闭弹窗" onClick={onClose}>
+          <button className="icon-button" aria-label={t('common.closeDialog')} onClick={onClose}>
             <Icon name="close" />
           </button>
         )}
@@ -131,29 +135,34 @@ export function Notice({
   children,
   kind = 'error',
 }: {
-  children: ReactNode;
+  children: ReactNode | Message;
   kind?: 'error' | 'info' | 'success';
 }) {
-  return children ? (
+  const { message } = useFormat();
+  const content =
+    children && typeof children === 'object' && 'code' in children ? message(children) : children;
+  return content ? (
     <div className={`notice ${kind}`} role={kind === 'error' ? 'alert' : 'status'}>
-      {children}
+      {content}
     </div>
   ) : null;
 }
 export function CopyButton({
   value,
-  label = '复制',
+  label: providedLabel,
   className = 'button secondary small',
 }: {
   value: string;
   label?: string;
   className?: string;
 }) {
-  const [state, setState] = useState('');
+  const { t } = useTranslation();
+  const label = providedLabel ?? t('common.copy');
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const fallbackId = useId();
   useEffect(() => {
-    if (state !== '已复制') return;
-    const timer = setTimeout(() => setState(''), 2500);
+    if (state !== 'copied') return;
+    const timer = setTimeout(() => setState('idle'), 2500);
     return () => clearTimeout(timer);
   }, [state]);
   return (
@@ -164,23 +173,23 @@ export function CopyButton({
         onClick={async () => {
           try {
             await navigator.clipboard.writeText(value);
-            setState('已复制');
+            setState('copied');
           } catch {
-            setState('复制失败，请手动选择文本复制');
+            setState('failed');
           }
         }}
       >
-        <Icon name={state === '已复制' ? 'check' : 'copy'} size={15} />
-        {state === '已复制' ? state : label}
+        <Icon name={state === 'copied' ? 'check' : 'copy'} size={15} />
+        {state === 'copied' ? t('common.copied') : label}
       </button>
-      {state && state !== '已复制' && (
+      {state === 'failed' && (
         <>
           <span id={fallbackId} className="field-error" role="alert">
-            {state}
+            {t('common.copyFailed')}
           </span>
           <input
             className="copy-fallback-input"
-            aria-label={`${label}：手动复制内容`}
+            aria-label={t('common.manualCopy', { label })}
             aria-describedby={fallbackId}
             value={value}
             readOnly

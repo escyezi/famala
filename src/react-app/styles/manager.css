@@ -153,7 +153,7 @@
 }
 .pool-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(235px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 15px;
   margin-bottom: 32px;
 }
@@ -467,6 +467,7 @@
   white-space: nowrap;
 }
 .table-pagination {
+  flex-wrap: wrap;
   margin-left: auto;
   display: flex;
   align-items: center;
@@ -623,8 +624,7 @@
   .manager-header nav {
     gap: var(--space-3);
   }
-  .manager-header nav a.current,
-  .workspace-menu-label-prefix {
+  .manager-header nav a.current {
     display: none;
   }
   .workspace {
@@ -689,7 +689,7 @@
   }
   .pool-overview-tools .actions {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 36px auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 6px;
   }
   .pool-overview-tools {
@@ -709,6 +709,7 @@
     flex: initial;
   }
   .table-pagination {
+    flex-wrap: wrap;
     width: 100%;
     justify-content: space-between;
     gap: var(--space-2);

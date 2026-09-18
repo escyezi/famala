@@ -125,7 +125,7 @@ test.each([
 ])('提交时服务端返回 %s，页面同步状态并停止领取', async (code, label) => {
   mockApi({
     ...publicRoutes,
-    'POST /api/claim': () => json({ error: '发放状态已变化', code }, 409),
+    'POST /api/claim': () => json({ code }, 409),
   });
   const turnstile = mockTurnstile();
   const user = userEvent.setup();
@@ -174,7 +174,7 @@ test('未配置人机验证时显示说明并禁止领取', async () => {
 test('加载失败后可以重试，也可以请求重新输入 Key', async () => {
   const validate = vi
     .fn()
-    .mockImplementationOnce(() => json({ error: '领取信息加载失败' }, 500))
+    .mockImplementationOnce(() => json({ code: 'SERVICE_UNAVAILABLE' }, 500))
     .mockImplementationOnce(() => json(publicPool));
   mockApi({ ...publicRoutes, 'POST /api/claim/validate': validate });
   const onEnterKey = vi.fn();
@@ -215,7 +215,7 @@ test('码池已删除时仍展示本地兑换码，禁止再标记使用', async
   localStorage.setItem(STORAGE_KEY, JSON.stringify([claimRecord]));
   mockApi({
     ...publicRoutes,
-    'POST /api/claim/validate': () => json({ error: '领码 Key 无效或码池已删除' }, 404),
+    'POST /api/claim/validate': () => json({ code: 'CLAIM_KEY_NOT_FOUND' }, 404),
   });
   renderClaim();
   expect(await screen.findByRole('button', { name: '无法标记使用' })).toBeDisabled();
@@ -227,7 +227,7 @@ test('码池已删除时仍展示本地兑换码，禁止再标记使用', async
 test('领取提交期间码池被删除后，停止领取并保留重新输入 Key 的入口', async () => {
   mockApi({
     ...publicRoutes,
-    'POST /api/claim': () => json({ error: '领码 Key 无效或码池已删除' }, 404),
+    'POST /api/claim': () => json({ code: 'CLAIM_KEY_NOT_FOUND' }, 404),
   });
   const turnstile = mockTurnstile();
   const user = userEvent.setup();
@@ -243,7 +243,7 @@ test('领取提交期间码池被删除后，停止领取并保留重新输入 K
 
 test('历史记录标记返回 404 后保留兑换码并禁止重复提交', async () => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify([claimRecord]));
-  const mark = vi.fn(() => json({ error: '领取记录已不存在' }, 404));
+  const mark = vi.fn(() => json({ code: 'RECORD_NOT_FOUND' }, 404));
   mockApi({ 'POST /api/claim/used': mark });
   const user = userEvent.setup();
   render(<HistoryDialog onClose={vi.fn()} />);
@@ -261,7 +261,7 @@ test('标记使用失败不修改记录，重试成功后持久化并禁止重�
   const usedAt = claimRecord.claimedAt + 1000;
   const used = vi
     .fn()
-    .mockImplementationOnce(() => json({ error: '标记失败' }, 500))
+    .mockImplementationOnce(() => json({ code: 'SERVICE_UNAVAILABLE' }, 500))
     .mockImplementationOnce(() =>
       json({ userMarkedUsed: true, userMarkedUsedAt: usedAt } satisfies ApiResponses['markUsed']),
     );
@@ -269,7 +269,7 @@ test('标记使用失败不修改记录，重试成功后持久化并禁止重�
   const user = userEvent.setup();
   const view = render(<HistoryDialog onClose={vi.fn()} />);
   await user.click(screen.getByRole('button', { name: '我已使用' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('标记失败');
+  expect(await screen.findByRole('alert')).toHaveTextContent('服务暂时不可用');
   expect(readRecords().records[0].userMarkedUsed).toBe(false);
   await user.click(screen.getByRole('button', { name: '我已使用' }));
   expect(await screen.findByRole('button', { name: '已标记使用' })).toBeDisabled();

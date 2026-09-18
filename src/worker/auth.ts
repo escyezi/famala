@@ -1,3 +1,4 @@
+import { errorBody } from '../shared/messages.ts';
 import { and, eq, gt } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
@@ -42,8 +43,7 @@ export function clearSession(c: Context<AppEnv>) {
 }
 export const requireSession = createMiddleware<AppEnv>(async (c, next) => {
   const token = getCookie(c, COOKIE);
-  if (!token || !/^s_[A-Za-z0-9_-]{43}$/.test(token))
-    return c.json({ error: '请使用发码 Key 重新登录', code: 'UNAUTHORIZED' }, 401);
+  if (!token || !/^s_[A-Za-z0-9_-]{43}$/.test(token)) return c.json(errorBody('UNAUTHORIZED'), 401);
   const session = await drizzle(c.env.DB)
     .select()
     .from(distributorSessions)
@@ -56,7 +56,7 @@ export const requireSession = createMiddleware<AppEnv>(async (c, next) => {
     .get();
   if (!session) {
     clearSession(c);
-    return c.json({ error: '登录态已失效，请使用发码 Key 重新登录', code: 'UNAUTHORIZED' }, 401);
+    return c.json(errorBody('UNAUTHORIZED'), 401);
   }
   c.set('spaceId', session.spaceId);
   c.set('sessionId', session.id);

@@ -1,3 +1,5 @@
+import { toMessage } from '../../shared/messages.ts';
+import type { Message } from '../../shared/messages.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '../../shared/api-types.ts';
 import { ApiError, api, readSession, rpc } from '../api.ts';
@@ -6,7 +8,7 @@ import { ApiError, api, readSession, rpc } from '../api.ts';
 export function useSession() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<Message | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const pending = useRef<AbortController | null>(null);
 
@@ -14,7 +16,7 @@ export function useSession() {
     pending.current?.abort();
     setSession(value);
     setLoading(false);
-    setError('');
+    setError(null);
   }, []);
 
   const loadSession = useCallback(() => {
@@ -28,8 +30,7 @@ export function useSession() {
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         setSession(null);
-        if (!(error instanceof ApiError && error.status === 401))
-          setError((error as Error).message);
+        if (!(error instanceof ApiError && error.status === 401)) setError(toMessage(error));
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -38,7 +39,7 @@ export function useSession() {
 
   const reload = useCallback(() => {
     setLoading(true);
-    setError('');
+    setError(null);
     return loadSession();
   }, [loadSession]);
 
@@ -50,13 +51,13 @@ export function useSession() {
   async function logout() {
     if (loggingOut) return false;
     setLoggingOut(true);
-    setError('');
+    setError(null);
     try {
       await api(rpc.api.manage.logout.$post());
       acceptSession(null);
       return true;
     } catch (error) {
-      setError((error as Error).message);
+      setError(toMessage(error));
       return false;
     } finally {
       setLoggingOut(false);

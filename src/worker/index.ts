@@ -1,3 +1,5 @@
+import { errorBody } from '../shared/messages.ts';
+import { ApiException, validationError } from './errors.ts';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
@@ -13,7 +15,7 @@ import {
   sessionCookie,
 } from './auth.ts';
 import { turnstileConfig, verifyTurnstile } from './turnstile.ts';
-import { parseImport } from '../shared/contracts.ts';
+import { parseImport, importFailure } from '../shared/contracts.ts';
 import type { ClaimRecord, UsedResult } from '../shared/contracts.ts';
 import {
   loginInput,
@@ -39,9 +41,9 @@ app.use('/api/*', async (c, next) => {
       (origin && origin !== new URL(c.req.url).origin) ||
       c.req.header('Sec-Fetch-Site') === 'cross-site'
     )
-      return c.json({ error: '不允许跨站提交请求' }, 403);
+      return c.json(errorBody('CROSS_SITE_REQUEST'), 403);
     if (!/^application\/json(?:\s*;|$)/i.test(c.req.header('Content-Type') ?? ''))
-      return c.json({ error: '请使用 JSON 提交请求' }, 415);
+      return c.json(errorBody('JSON_REQUIRED'), 415);
   }
   await next();
 });
@@ -49,7 +51,7 @@ app.use(
   '/api/*',
   bodyLimit({
     maxSize: 1024 * 1024,
-    onError: (c) => c.json({ error: '提交内容过大，请拆分后重试' }, 413),
+    onError: (c) => c.json(errorBody('BODY_TOO_LARGE'), 413),
   }),
 );
 
@@ -73,13 +75,13 @@ async function ownedPool(c: Context<AppEnv>) {
   const rawId = c.req.param('id') ?? '';
   const id = Number(rawId);
   if (!/^[1-9]\d*$/.test(rawId) || !Number.isSafeInteger(id))
-    throw new HTTPException(404, { message: '兑换码池不存在' });
+    throw new ApiException(404, 'POOL_NOT_FOUND');
   const pool = await drizzle(c.env.DB)
     .select()
     .from(codePools)
     .where(and(eq(codePools.id, id), eq(codePools.spaceId, c.get('spaceId'))))
     .get();
-  if (!pool) throw new HTTPException(404, { message: '兑换码池不存在' });
+  if (!pool) throw new ApiException(404, 'POOL_NOT_FOUND');
   return pool;
 }
 async function publicPool(c: Context<AppEnv>, key: string) {
@@ -95,7 +97,7 @@ async function publicPool(c: Context<AppEnv>, key: string) {
     .where(eq(codePools.claimKey, key))
     .groupBy(codePools.id)
     .get();
-  if (!pool) throw new HTTPException(404, { message: '领码 Key 无效或码池已删除' });
+  if (!pool) throw new ApiException(404, 'CLAIM_KEY_NOT_FOUND');
   return pool;
 }
 const routes = app
@@ -138,7 +140,7 @@ const routes = app
       .from(distributorSpaces)
       .where(eq(distributorSpaces.keyHash, await digest(key.trim())))
       .get();
-    if (!space) return c.json({ error: '发码 Key 无效，请检查后重试' }, 401);
+    if (!space) return c.json(errorBody('INVALID_DISTRIBUTOR_KEY'), 401);
     const token = randomKey('s_');
     const now = Date.now();
     const expiresAt = now + SESSION_MS;
@@ -185,7 +187,7 @@ const routes = app
       .onConflictDoNothing({ target: [codePools.spaceId, codePools.name] })
       .returning()
       .get();
-    if (!pool) return c.json({ error: '当前空间已有同名码池，请更换名称' }, 409);
+    if (!pool) return c.json(errorBody('POOL_NAME_EXISTS'), 409);
     return c.json({ id: pool.id }, 201);
   })
   .delete('/api/manage/pools/:id', async (c) => {
@@ -199,7 +201,7 @@ const routes = app
         .where(and(eq(codePools.id, pool.id), eq(codePools.spaceId, c.get('spaceId'))))
         .returning({ id: codePools.id }),
     ]);
-    if (!deleted.length) return c.json({ error: '兑换码池不存在或已删除' }, 404);
+    if (!deleted.length) return c.json(errorBody('POOL_DELETED'), 404);
     return c.json({ ok: true }, 200);
   })
   .post('/api/manage/pools/:id/name', poolNameInput, async (c) => {
@@ -214,7 +216,7 @@ const routes = app
   `);
     if (!renamed) {
       await ownedPool(c);
-      return c.json({ error: '当前空间已有同名码池，请更换名称' }, 409);
+      return c.json(errorBody('POOL_NAME_EXISTS'), 409);
     }
     return c.json(renamed, 200);
   })
@@ -226,7 +228,7 @@ const routes = app
       .set({ status })
       .where(and(eq(codePools.id, pool.id), eq(codePools.spaceId, c.get('spaceId'))))
       .returning({ id: codePools.id });
-    if (!updated.length) return c.json({ error: '兑换码池不存在或已删除' }, 404);
+    if (!updated.length) return c.json(errorBody('POOL_DELETED'), 404);
     return c.json({ status }, 200);
   })
   .post('/api/manage/pools/:id/import', importInput, async (c) => {
@@ -236,7 +238,7 @@ const routes = app
     try {
       parsed = parseImport(text);
     } catch (error) {
-      return c.json({ error: (error as Error).message }, 400);
+      return c.json(validationError(error), 400);
     }
     const { valid, failures } = parsed;
     const now = Date.now();
@@ -256,7 +258,7 @@ const routes = app
       const saved = new Set(inserted.map((row) => row.code));
       succeeded += saved.size;
       for (const row of chunk)
-        if (!saved.has(row.code)) failures.push({ ...row, reason: '码池中已存在该兑换码' });
+        if (!saved.has(row.code)) failures.push(importFailure(row, 'DUPLICATE_IN_POOL'));
     }
     // Deletion between import chunks must not report success or duplicate codes.
     await ownedPool(c);
@@ -303,21 +305,12 @@ const routes = app
     const data = c.req.valid('json');
     const key = data.claimKey;
     const pool = await publicPool(c, key);
-    if (pool.status === 'stopped')
-      return c.json({ error: '已停止发放', code: 'POOL_STOPPED' }, 409);
+    if (pool.status === 'stopped') return c.json(errorBody('POOL_STOPPED'), 409);
     const remark = data.remark ?? null;
-    if (!pool.remaining) return c.json({ error: '兑换码已领完', code: 'POOL_EMPTY' }, 409);
+    if (!pool.remaining) return c.json(errorBody('POOL_EMPTY'), 409);
     const verification = await verifyTurnstile(c.env, c.req.url, data.turnstileToken);
     if (!verification.ok)
-      return c.json(
-        {
-          error: verification.unavailable
-            ? '人机验证暂时不可用，请稍后重新验证'
-            : '人机验证失败或已过期，请重新验证',
-          code: 'TURNSTILE_FAILED',
-        },
-        verification.unavailable ? 503 : 400,
-      );
+      return c.json(errorBody('TURNSTILE_FAILED'), verification.unavailable ? 503 : 400);
     // One statement rechecks active status and availability after verification.
     const row = await drizzle(c.env.DB).get<{ code: string; claimedAt: number }>(sql`
     UPDATE redemption_codes SET claim_status = 'claimed', claimed_at = ${Date.now()}, remark = ${remark}
@@ -330,13 +323,7 @@ const routes = app
   `);
     if (!row) {
       const current = await publicPool(c, key);
-      return c.json(
-        {
-          error: current.status === 'stopped' ? '已停止发放' : '兑换码已领完',
-          code: current.status === 'stopped' ? 'POOL_STOPPED' : 'POOL_EMPTY',
-        },
-        409,
-      );
+      return c.json(errorBody(current.status === 'stopped' ? 'POOL_STOPPED' : 'POOL_EMPTY'), 409);
     }
     return c.json(
       {
@@ -358,19 +345,24 @@ const routes = app
     WHERE pool_id = (SELECT id FROM code_pools WHERE claim_key = ${key}) AND code = ${data.code} AND claim_status = 'claimed'
     RETURNING user_marked_used_at AS userMarkedUsedAt
   `);
-    if (!row)
-      return c.json({ error: '领取记录已不存在，无法标记使用；已保存的兑换码仍可复制。' }, 404);
+    if (!row) return c.json(errorBody('RECORD_NOT_FOUND'), 404);
     return c.json(
       { userMarkedUsed: true, userMarkedUsedAt: row.userMarkedUsedAt } satisfies UsedResult,
       200,
     );
   });
-app.notFound((c) => c.json({ error: '接口不存在' }, 404));
+app.notFound((c) => c.json(errorBody('NOT_FOUND'), 404));
 app.onError((error, c) => {
-  if (error instanceof HTTPException) return c.json({ error: error.message }, error.status);
+  if (error instanceof ApiException)
+    return c.json(errorBody(error.code, error.params), error.status);
+  if (error instanceof HTTPException)
+    return c.json(
+      errorBody(error.status === 400 ? 'INVALID_JSON' : 'REQUEST_FAILED'),
+      error.status,
+    );
   // Database errors may contain bound secrets or codes: don't log their payloads.
   console.error('Famala request failed', c.req.method, c.req.path);
-  return c.json({ error: '服务暂时不可用，请稍后重试' }, 500);
+  return c.json(errorBody('SERVICE_UNAVAILABLE'), 500);
 });
 export type AppType = typeof routes;
 export default routes;

@@ -1,3 +1,4 @@
+import { useTranslation, Trans } from 'react-i18next';
 import { useEffect, useState } from 'react';
 import { AuthDialog } from './components/AuthDialog.tsx';
 import { ClaimKeyDialog, ClaimPage, HistoryDialog } from './components/Claims.tsx';
@@ -6,8 +7,10 @@ import { Icon, Notice } from './components/ui.tsx';
 import { WorkspaceMenu } from './components/WorkspaceMenu.tsx';
 import { useSession } from './hooks/useSession.ts';
 import './App.css';
+import { LanguageToggle } from './components/LanguageToggle.tsx';
 
 function App() {
+  const { t } = useTranslation();
   const [route, setRoute] = useState(() => ({
     path: location.pathname,
     search: location.search,
@@ -63,11 +66,16 @@ function App() {
           </span>
         </a>
         <span className="header-divider" />
-        <span className="product-name">兑换码发放平台</span>
+        <span className="product-name">{t('common.product')}</span>
         <nav>
-          <button className="history-button" onClick={() => setModal('history')}>
+          <LanguageToggle />
+          <button
+            className="history-button"
+            aria-label={t('common.history')}
+            onClick={() => setModal('history')}
+          >
             <Icon name="history" size={17} />
-            <span>已领取的兑换码</span>
+            <span>{t('common.history')}</span>
           </button>
           {managing && session && (
             <div className="workspace-menu-slot">
@@ -92,13 +100,13 @@ function App() {
             <main className="manager-main">
               <div className="empty-state">
                 {loading ? (
-                  '正在连接发码空间…'
+                  t('home.connecting')
                 ) : error ? (
                   <button className="button secondary" onClick={() => void reload()}>
-                    重新连接
+                    {t('common.reconnect')}
                   </button>
                 ) : (
-                  '请登录后管理码池。'
+                  t('home.loginRequired')
                 )}
               </div>
             </main>
@@ -110,22 +118,20 @@ function App() {
         <main className="home-main">
           <div className="home-copy">
             <h1>
-              一个链接，
-              <br />
-              <span>轻松发码。</span>
+              <Trans i18nKey="home.headline" components={{ br: <br />, accent: <span /> }} />
             </h1>
             <div className="home-features">
               <span>
                 <Icon name="check" size={16} />
-                无需注册
+                {t('home.noSignup')}
               </span>
               <span>
                 <Icon name="check" size={16} />
-                批量管理
+                {t('home.bulk')}
               </span>
               <span>
                 <Icon name="check" size={16} />
-                领取记录可查看
+                {t('home.records')}
               </span>
             </div>
           </div>
@@ -135,16 +141,14 @@ function App() {
                 <span className="tile-icon large">
                   <Icon name="box" size={28} />
                 </span>
-                <span className="entry-number">01 / SHARE</span>
+                <span className="entry-number">{t('home.shareEyebrow')}</span>
               </div>
-              <h2>{session ? '发码管理' : '我要发码'}</h2>
+              <h2>{session ? t('home.manage') : t('home.distribute')}</h2>
               <p>
-                创建兑换码池、批量导入，
-                <br />
-                一个链接，让分享开始。
+                <Trans i18nKey="home.shareDescription" components={{ br: <br /> }} />
               </p>
               <span className="entry-link">
-                {session ? '进入我的发码空间' : '开启我的发码空间'}
+                {session ? t('home.enter') : t('home.start')}
                 <Icon name="arrow" />
               </span>
             </button>
@@ -153,30 +157,28 @@ function App() {
                 <span className="tile-icon large">
                   <Icon name="gift" size={28} />
                 </span>
-                <span className="entry-number">02 / RECEIVE</span>
+                <span className="entry-number">{t('home.receiveEyebrow')}</span>
               </div>
-              <h2>我要领码</h2>
+              <h2>{t('home.receive')}</h2>
               <p>
-                带上你的领码 Key，
-                <br />
-                领取一份属于你的惊喜。
+                <Trans i18nKey="home.claimDescription" components={{ br: <br /> }} />
               </p>
               <span className="entry-link">
-                输入领码 Key
+                {t('home.enterKey')}
                 <Icon name="arrow" />
               </span>
             </button>
           </div>
           <div className="home-bottom">
-            <span>简单发放 · 轻松领取</span>
-            <span>MADE FOR SHARING</span>
+            <span>{t('home.tagline')}</span>
+            <span>{t('home.bottomEyebrow')}</span>
           </div>
         </main>
       )}
       {!managing && (
         <footer className="app-footer">
-          <span>famala · 让发码简单一点</span>
-          <span>兑换码使用规则以发码者说明为准</span>
+          <span>{t('home.footer')}</span>
+          <span>{t('home.rules')}</span>
         </footer>
       )}
       {(modal === 'auth' || needsLogin) && (

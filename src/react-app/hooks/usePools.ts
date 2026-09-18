@@ -1,10 +1,12 @@
+import { toMessage } from '../../shared/messages.ts';
+import type { Message } from '../../shared/messages.ts';
 import { useCallback, useEffect, useState } from 'react';
 import type { Pool } from '../../shared/api-types.ts';
 import { api, rpc } from '../api.ts';
 
 export function usePools(poolId?: string) {
   const [pools, setPools] = useState<Pool[] | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<Message | null>(null);
   const [revision, setRevision] = useState(0);
   const [completed, setCompleted] = useState<{ poolId?: string; revision: number } | null>(null);
   const loading = completed?.poolId !== poolId || completed?.revision !== revision;
@@ -14,10 +16,10 @@ export function usePools(poolId?: string) {
       .then((result) => {
         if (controller.signal.aborted) return;
         setPools(result.items);
-        setError('');
+        setError(null);
       })
       .catch((error: Error) => {
-        if (!controller.signal.aborted) setError(error.message);
+        if (!controller.signal.aborted) setError(toMessage(error));
       })
       .finally(() => {
         if (!controller.signal.aborted) setCompleted({ poolId, revision });
@@ -26,12 +28,12 @@ export function usePools(poolId?: string) {
   }, [poolId, revision]);
 
   const refresh = useCallback(() => {
-    setError('');
+    setError(null);
     setRevision((value) => value + 1);
   }, []);
   const removePool = useCallback((id: number) => {
     setPools((items) => items?.filter((pool) => pool.id !== id) ?? null);
-    setError('');
+    setError(null);
   }, []);
   return { pools, loading, error, refresh, removePool };
 }

@@ -1,44 +1,46 @@
+import { errorBody } from '../shared/messages.ts';
+import { ApiException, validationError } from './errors.ts';
 import type { MiddlewareHandler } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { validator } from 'hono/validator';
 import { codePointLength, normalizeRemark } from '../shared/contracts.ts';
 import type { AppEnv } from './types.ts';
 
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw new HTTPException(400, { message: '请求内容不是有效的 JSON 对象' });
+    throw new ApiException(400, 'INVALID_JSON');
   return value as Record<string, unknown>;
 }
 
 function claimKey(value: unknown) {
   if (typeof value !== 'string' || !/^c_[A-Za-z0-9_-]{43}$/.test(value.trim()))
-    throw new HTTPException(404, { message: '领码 Key 无效，请检查后重试' });
+    throw new ApiException(404, 'INVALID_CLAIM_KEY');
   return value.trim();
 }
 
 export const loginInput = validator('json', (value: unknown, c) => {
   const { key } = object(value);
   if (typeof key !== 'string' || !/^d_[A-Za-z0-9_-]{43}$/.test(key.trim()))
-    return c.json({ error: '发码 Key 无效，请检查后重试' }, 401);
+    return c.json(errorBody('INVALID_DISTRIBUTOR_KEY'), 401);
   return { key: key.trim() };
 });
 
 export const poolNameInput = validator('json', (value: unknown, c) => {
   const { name } = object(value);
-  if (typeof name !== 'string' || !name.trim()) return c.json({ error: '码池名称不能为空' }, 400);
-  if (name.includes('\0')) return c.json({ error: '码池名称包含不支持的空字符' }, 400);
+  if (typeof name !== 'string' || !name.trim()) return c.json(errorBody('POOL_NAME_REQUIRED'), 400);
+  if (name.includes('\0')) return c.json(errorBody('POOL_NAME_NULL'), 400);
   return { name: name.trim() };
 });
 
 export const poolStatusInput = validator('json', (value: unknown, c) => {
   const { status } = object(value);
-  if (status !== 'active' && status !== 'stopped') return c.json({ error: '无效的码池状态' }, 400);
+  if (status !== 'active' && status !== 'stopped')
+    return c.json(errorBody('INVALID_POOL_STATUS'), 400);
   return { status } as const;
 });
 
 export const importInput = validator('json', (value: unknown, c) => {
   const { text } = object(value);
-  if (typeof text !== 'string') return c.json({ error: '请提交每行一个的兑换码文本' }, 400);
+  if (typeof text !== 'string') return c.json(errorBody('IMPORT_TEXT_REQUIRED'), 400);
   return { text };
 });
 
@@ -53,14 +55,14 @@ export const claimInput = validator('json', (value: unknown, c) => {
   try {
     remark = normalizeRemark(data.remark);
   } catch (error) {
-    return c.json({ error: (error as Error).message }, 400);
+    return c.json(validationError(error), 400);
   }
   if (
     typeof data.turnstileToken !== 'string' ||
     !data.turnstileToken ||
     data.turnstileToken.length > 2048
   )
-    return c.json({ error: '人机验证失败或已过期，请重新验证', code: 'TURNSTILE_FAILED' }, 400);
+    return c.json(errorBody('TURNSTILE_FAILED'), 400);
   return {
     claimKey: key,
     ...(data.remark === undefined ? {} : { remark }),
@@ -72,7 +74,7 @@ export const usedInput = validator('json', (value: unknown, c) => {
   const data = object(value);
   const key = claimKey(data.claimKey);
   if (typeof data.code !== 'string' || !data.code || codePointLength(data.code) > 100)
-    return c.json({ error: '兑换码无效' }, 400);
+    return c.json(errorBody('INVALID_CODE'), 400);
   return { claimKey: key, code: data.code };
 });
 
@@ -96,16 +98,16 @@ export const codesQuery: MiddlewareHandler<
     page < 1 ||
     page > 1_000_000
   )
-    throw new HTTPException(400, { message: '无效的页码' });
+    throw new ApiException(400, 'INVALID_PAGE');
   const status = query.status?.[0] || 'all';
   if (
     (query.status && query.status.length !== 1) ||
     (status !== 'all' && status !== 'claimed' && status !== 'unclaimed')
   )
-    throw new HTTPException(400, { message: '无效的领取状态' });
+    throw new ApiException(400, 'INVALID_FILTER');
   const size = query.pageSize?.[0] ?? '50';
   if ((query.pageSize && query.pageSize.length !== 1) || (size !== '20' && size !== '50'))
-    throw new HTTPException(400, { message: '每页条数仅支持 20 或 50' });
+    throw new ApiException(400, 'INVALID_PAGE_SIZE');
   c.req.addValidatedData('query', { page, status, pageSize: Number(size) });
   await next();
 };

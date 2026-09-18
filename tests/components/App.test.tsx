@@ -29,7 +29,7 @@ test('游客打开首页不会因会话 401 弹出登录框，校验领码 Key �
   render(<App />);
   // Assert after the 401 has been handled, not merely after fetch was called.
   await act(async () => {
-    sessionResponse.resolve(json({ error: '未登录' }, 401));
+    sessionResponse.resolve(json({ code: 'UNAUTHORIZED' }, 401));
   });
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: /我要发码/ })).toBeVisible();
@@ -46,7 +46,7 @@ test('游客打开首页不会因会话 401 弹出登录框，校验领码 Key �
 test('管理接口返回 401 时展示登录框，取消后回到首页', async () => {
   window.history.replaceState(null, '', '/manage');
   mockApi({
-    'GET /api/manage/session': () => json({ error: '登录已过期' }, 401),
+    'GET /api/manage/session': () => json({ code: 'UNAUTHORIZED' }, 401),
   });
   const user = userEvent.setup();
   render(<App />);
@@ -75,7 +75,7 @@ test('首页发码入口等待会话确认，登录后直接返回当前空间�
   await user.click(screen.getByRole('button', { name: /我要发码/ }));
   expect(screen.getByText('正在连接发码空间…')).toBeVisible();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  await act(async () => initialSession.resolve(json({ error: '未登录' }, 401)));
+  await act(async () => initialSession.resolve(json({ code: 'UNAUTHORIZED' }, 401)));
   await user.click(screen.getByRole('button', { name: /使用已有 Key/ }));
   await user.type(screen.getByLabelText('发码 Key'), 'd_saved-key');
   await user.click(screen.getByRole('button', { name: '进入管理页面' }));
@@ -148,7 +148,7 @@ test('前进后退和切换码池重置详情状态，已离开的请求返回 4
   await user.click(screen.getByRole('link', { name: '返回码池列表' }));
   await user.click(await screen.findByRole('link', { name: new RegExp(second.name) }));
   await screen.findByText('POOL-TWO');
-  await act(async () => oldCodes.resolve(json({ error: '旧请求已过期' }, 401)));
+  await act(async () => oldCodes.resolve(json({ code: 'UNAUTHORIZED' }, 401)));
   expect(screen.getByText('POOL-TWO')).toBeVisible();
   expect(screen.queryByText('POOL-ONE')).not.toBeInTheDocument();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -164,7 +164,7 @@ test('会话过期清除旧空间详情，重新登录保留目标路由且忽�
     'GET /api/manage/session': () => json(session satisfies ApiResponses['session']),
     'GET /api/manage/pools': () =>
       expired
-        ? json({ error: '登录已过期' }, 401)
+        ? json({ code: 'UNAUTHORIZED' }, 401)
         : json({
             items: [{ ...pool, name: loggedInAgain ? '重新登录的码池' : pool.name }],
           } satisfies ApiResponses['pools']),
@@ -211,7 +211,7 @@ test('管理页会话查询失败可重试，连接故障不误判为需要登�
   const retriedSession = deferred<Response>();
   const readSession = vi
     .fn()
-    .mockImplementationOnce(() => json({ error: '暂时不可用' }, 503))
+    .mockImplementationOnce(() => json({ code: 'SERVICE_UNAVAILABLE' }, 503))
     .mockImplementationOnce(() => retriedSession.promise);
   const pools = vi.fn(() => json({ items: [] } satisfies ApiResponses['pools']));
   mockApi({ 'GET /api/manage/session': readSession, 'GET /api/manage/pools': pools });

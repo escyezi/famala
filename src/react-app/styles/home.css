@@ -25,6 +25,7 @@
   color: #6e8068;
 }
 .home-features {
+  flex-wrap: wrap;
   display: flex;
   gap: var(--space-6);
   justify-content: center;
@@ -95,6 +96,7 @@
   line-height: 1.9;
 }
 .entry-link {
+  gap: 8px;
   border-top: 1px solid #dce5d4;
   margin-top: 26px;
   padding-top: 17px;
@@ -106,6 +108,7 @@
   font-weight: 600;
 }
 .receive .entry-link {
+  gap: 8px;
   border-color: #e8e1ce;
   color: #8b7b51;
 }
@@ -133,6 +136,7 @@
     font-size: 12px;
   }
   .home-features {
+    flex-wrap: wrap;
     gap: var(--space-3);
     font-size: 10px;
   }
@@ -153,6 +157,7 @@
     display: none;
   }
   .entry-link {
+    gap: 8px;
     font-size: 10px;
     margin-top: 21px;
   }
@@ -162,5 +167,11 @@
   }
   .home-bottom {
     font-size: 8px;
+  }
+}
+
+@media (max-width: 560px) {
+  .entry-cards {
+    grid-template-columns: 1fr;
   }
 }

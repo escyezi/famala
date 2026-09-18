@@ -1,5 +1,9 @@
+import { useFormat } from '../i18n/format.ts';
+import { useTranslation } from 'react-i18next';
+import { toMessage } from '../../shared/messages.ts';
+import type { Message } from '../../shared/messages.ts';
 import { useEffect, useRef, useState } from 'react';
-import { api, rpc, ApiError, dateTime } from '../api.ts';
+import { api, rpc, ApiError } from '../api.ts';
 import { readRecords, saveClaim, saveUsed, subscribeRecords } from '../storage.ts';
 import { normalizeRemark, codePointLength } from '../../shared/contracts.ts';
 import type { ClaimRecord, UsedResult } from '../../shared/contracts.ts';
@@ -16,17 +20,19 @@ function RecordCard({
   onMarked?: (record: ClaimRecord) => void;
   unavailable?: boolean;
 }) {
+  const { dateTime } = useFormat();
+  const { t } = useTranslation();
   const [used, setUsed] = useState<UsedResult | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [warning, setWarning] = useState('');
+  const [error, setError] = useState<Message | null>(null);
+  const [warning, setWarning] = useState<Message | null>(null);
   const [missing, setMissing] = useState(false);
   const cannotMark = unavailable || missing;
   const marked = record.userMarkedUsed || used !== null;
   async function mark() {
     if (busy || marked || cannotMark) return;
     setBusy(true);
-    setError('');
+    setError(null);
     try {
       const result = await api(
         rpc.api.claim.used.$post({
@@ -41,7 +47,7 @@ function RecordCard({
       setWarning(await saveUsed(record, result));
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) setMissing(true);
-      else setError((e as Error).message);
+      else setError(toMessage(e));
     } finally {
       setBusy(false);
     }
@@ -51,19 +57,19 @@ function RecordCard({
       <div className="record-head">
         <div>
           <h3>{record.poolName}</h3>
-          <span className="muted small-text">领取于 {dateTime(record.claimedAt)}</span>
+          <span className="muted small-text">
+            {t('claim.claimedAt', { date: dateTime(record.claimedAt) })}
+          </span>
         </div>
-        <span className="status claimed">已领取</span>
+        <span className="status claimed">{t('common.claimed')}</span>
       </div>
       <div className="claimed-code">
         <code>{record.code}</code>
-        <CopyButton value={record.code} label="复制兑换码" />
+        <CopyButton value={record.code} label={t('common.copyCode')} />
       </div>
       <Notice>{error}</Notice>
       <Notice kind="info">{warning}</Notice>
-      {cannotMark && (
-        <Notice kind="info">领取记录已不存在，无法标记使用；已保存的兑换码仍可复制。</Notice>
-      )}
+      {cannotMark && <Notice kind="info">{t('errors.RECORD_NOT_FOUND')}</Notice>}
       <div className="record-footer">
         <button
           className={`button ${marked ? 'secondary' : 'primary'} small`}
@@ -71,7 +77,13 @@ function RecordCard({
           disabled={marked || busy || cannotMark}
         >
           <Icon name="check" size={16} />
-          {marked ? '已标记使用' : cannotMark ? '无法标记使用' : busy ? '正在标记…' : '我已使用'}
+          {marked
+            ? t('common.markedUsed')
+            : cannotMark
+              ? t('claim.cannotMark')
+              : busy
+                ? t('claim.marking')
+                : t('claim.markUsed')}
         </button>
         {marked && (
           <span className="muted small-text">
@@ -83,11 +95,12 @@ function RecordCard({
   );
 }
 export function HistoryDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const [snapshot, setSnapshot] = useState(readRecords);
   useEffect(() => subscribeRecords(() => setSnapshot(readRecords())), []);
   return (
-    <Dialog title="已领取的兑换码" onClose={onClose} wide>
-      <p className="muted">仅保存在当前浏览器，清除浏览器数据后无法恢复。</p>
+    <Dialog title={t('common.history')} onClose={onClose} wide>
+      <p className="muted">{t('claim.historyHelp')}</p>
       <Notice kind="info">{snapshot.warning}</Notice>
       <div className="history-list">
         {snapshot.records.length ? (
@@ -97,8 +110,8 @@ export function HistoryDialog({ onClose }: { onClose: () => void }) {
         ) : (
           <div className="empty-state">
             <Icon name="history" size={36} />
-            <h3>暂无已领取的兑换码</h3>
-            <p>领取成功后，你的兑换码会保存在这里。</p>
+            <h3>{t('claim.noHistory')}</h3>
+            <p>{t('claim.historyIntro')}</p>
           </div>
         )}
       </div>
@@ -112,29 +125,30 @@ export function ClaimKeyDialog({
   onClose: () => void;
   onValidated: (key: string) => void;
 }) {
+  const { t } = useTranslation();
   const [key, setKey] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<Message | null>(null);
   const [busy, setBusy] = useState(false);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (busy || !key.trim()) return;
     setBusy(true);
-    setError('');
+    setError(null);
     try {
       await api(rpc.api.claim.validate.$post({ json: { claimKey: key.trim() } }));
       onValidated(key.trim());
     } catch (e) {
-      setError((e as Error).message);
+      setError(toMessage(e));
     } finally {
       setBusy(false);
     }
   }
   return (
-    <Dialog title="领取你的兑换码" onClose={onClose} locked={busy}>
-      <p className="muted">输入发码者分享的领码 Key，即可前往领取。</p>
+    <Dialog title={t('claim.title')} onClose={onClose} locked={busy}>
+      <p className="muted">{t('claim.keyHelp')}</p>
       <Notice>{error}</Notice>
       <form onSubmit={submit}>
-        <label htmlFor="claim-key">领码 Key</label>
+        <label htmlFor="claim-key">{t('claim.key')}</label>
         <input
           id="claim-key"
           value={key}
@@ -146,10 +160,10 @@ export function ClaimKeyDialog({
         />
         <div className="dialog-actions">
           <button type="button" className="button secondary" onClick={onClose} disabled={busy}>
-            取消
+            {t('common.cancel')}
           </button>
           <button className="button primary" disabled={busy || !key.trim()}>
-            {busy ? '校验中…' : '前往领取'}
+            {busy ? t('claim.validating') : t('claim.continue')}
             <Icon name="arrow" size={16} />
           </button>
         </div>
@@ -158,6 +172,7 @@ export function ClaimKeyDialog({
   );
 }
 export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterKey: () => void }) {
+  const { t } = useTranslation();
   const [pool, setPool] = useState<PublicPool | null>(null);
   const [config, setConfig] = useState<PublicConfig | null>(null);
   const [snapshot, setSnapshot] = useState(readRecords);
@@ -167,8 +182,8 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
   const [attempt, setAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
-  const [error, setError] = useState('');
-  const [warning, setWarning] = useState('');
+  const [error, setError] = useState<Message | null>(null);
+  const [warning, setWarning] = useState<Message | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [poolMissing, setPoolMissing] = useState(false);
   const [revision, setRevision] = useState(0);
@@ -189,7 +204,7 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
         setPool(p);
         setPoolMissing(false);
         setConfig(conf);
-        setError('');
+        setError(null);
         setLoaded(true);
       })
       .catch((e: Error) => {
@@ -198,7 +213,7 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
             setPool(null);
             setPoolMissing(true);
           }
-          setError(e.message);
+          setError(toMessage(e));
           setLoaded(true);
         }
       });
@@ -208,9 +223,9 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
   const available = pool?.status === 'active' && pool.remaining > 0;
   const distributionState = pool?.status === 'stopped' ? 'stopped' : available ? 'active' : 'empty';
   const distributionLabel = {
-    stopped: '停止发放',
-    active: '兑换码发放中',
-    empty: '兑换码已发放完毕',
+    stopped: t('manage.stop'),
+    active: t('claim.active'),
+    empty: t('claim.empty'),
   }[distributionState];
   const length = codePointLength(remark.trim());
   async function claim(e: React.FormEvent) {
@@ -226,12 +241,12 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
     try {
       normalizeRemark(remark);
     } catch (e) {
-      setError((e as Error).message);
+      setError(toMessage(e));
       return;
     }
     submitting.current = true;
     setBusy(true);
-    setError('');
+    setError(null);
     try {
       const claimed = await api(
         rpc.api.claim.$post({
@@ -245,7 +260,7 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
       setResult(claimed);
       setWarning(await saveClaim(claimed));
     } catch (e) {
-      setError((e as Error).message);
+      setError(toMessage(e));
       if (e instanceof ApiError && e.code === 'POOL_STOPPED')
         setPool((p) => p && { ...p, status: 'stopped' });
       if (e instanceof ApiError && e.code === 'POOL_EMPTY')
@@ -267,9 +282,9 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
         <span className="hero-icon">
           <Icon name={record ? 'check' : 'gift'} size={34} />
         </span>
-        <div className="eyebrow">A LITTLE SOMETHING FOR YOU</div>
-        <h1>{pool?.name ?? record?.poolName ?? '领取兑换码'}</h1>
-        {record && <p className="muted">复制兑换码，前往对应平台使用。</p>}
+        <div className="eyebrow">{t('claim.eyebrow')}</div>
+        <h1>{pool?.name ?? record?.poolName ?? t('claim.submit')}</h1>
+        {record && <p className="muted">{t('claim.copyHelp')}</p>}
       </div>
       <Notice>{error}</Notice>
       <Notice kind="info">{warning || snapshot.warning}</Notice>
@@ -281,16 +296,16 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
           unavailable={poolMissing}
         />
       ) : !loaded ? (
-        <div className="empty-state">正在加载领取信息…</div>
+        <div className="empty-state">{t('claim.loading')}</div>
       ) : !pool ? (
         <div className="claim-panel">
-          {!poolMissing && <p>暂时无法加载领取信息。</p>}
+          {!poolMissing && <p>{t('claim.loadFailed')}</p>}
           <div className="actions">
             <button className="button secondary" onClick={() => setRevision((v) => v + 1)}>
-              重试
+              {t('common.retry')}
             </button>
             <button className="button primary" onClick={onEnterKey}>
-              重新输入领码 Key
+              {t('claim.enterAgain')}
             </button>
           </div>
         </div>
@@ -302,41 +317,47 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
           </div>
           <form onSubmit={claim}>
             <label htmlFor="remark">
-              备注 <span className="muted">选填 · {length}/500</span>
+              {t('claim.remark')}
+              <span className="muted">{t('claim.optionalCount', { count: length })}</span>
             </label>
             <textarea
               id="remark"
               rows={3}
-              placeholder="对开发者说点什么"
+              placeholder={t('claim.remarkPlaceholder')}
               value={remark}
               onChange={(e) => setRemark(e.target.value)}
               disabled={busy}
             />
-            {length > 500 && <Notice>备注最多 500 字，请修改后领取。</Notice>}
+            {length > 500 && <Notice>{t('claim.remarkTooLong')}</Notice>}
             {available && config?.turnstileSiteKey && (
-              <Turnstile key={attempt} siteKey={config.turnstileSiteKey} onToken={setToken} />
+              <Turnstile
+                busy={busy}
+                key={attempt}
+                siteKey={config.turnstileSiteKey}
+                onToken={setToken}
+              />
             )}
             {available && config && !config.turnstileSiteKey && (
-              <Notice>人机验证暂未配置，暂时无法领取，请联系发码者。</Notice>
+              <Notice>{t('claim.unconfigured')}</Notice>
             )}
             <button
               className="button primary full claim-button"
               disabled={!available || !token || busy || length > 500}
             >
-              领取兑换码
+              {t('claim.submit')}
               {available && !busy && <Icon name="arrow" size={18} />}
             </button>
           </form>
           {!available && (
             <button className="text-button full" onClick={() => setRevision((v) => v + 1)}>
-              刷新领取状态
+              {t('claim.refresh')}
             </button>
           )}
         </section>
       )}
       <p className="claim-footnote">
         <Icon name="history" size={15} />
-        领取记录仅保存在当前浏览器，请及时复制保存。
+        {t('claim.saveNote')}
       </p>
     </main>
   );

@@ -1,3 +1,7 @@
+import { useFormat } from '../i18n/format.ts';
+import { useTranslation, Trans } from 'react-i18next';
+import { toMessage } from '../../shared/messages.ts';
+import type { Message } from '../../shared/messages.ts';
 import { useState } from 'react';
 import { api, ApiError, rpc } from '../api.ts';
 import { parseImport } from '../../shared/contracts.ts';
@@ -13,39 +17,36 @@ export function DeletePoolDialog({
   onClose: () => void;
   onDeleted: () => void;
 }) {
+  const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<Message | null>(null);
   async function remove() {
     if (busy) return;
     setBusy(true);
-    setError('');
+    setError(null);
     try {
       await api(rpc.api.manage.pools[':id'].$delete({ param: { id: String(pool.id) } }));
       onDeleted();
     } catch (e) {
       // A retry after a lost response, or deletion in another tab, is already complete.
       if (e instanceof ApiError && e.status === 404) onDeleted();
-      else setError((e as Error).message);
+      else setError(toMessage(e));
     } finally {
       setBusy(false);
     }
   }
   return (
-    <Dialog title="删除码池" onClose={onClose} locked={busy}>
-      <p className="muted">确定永久删除「{pool.name}」吗？</p>
-      <p className="delete-pool-note">
-        该码池的全部兑换码和领取记录将被删除，领码 Key 与分享链接立即失效。此操作无法撤销。
-      </p>
-      <p className="field-help">
-        已发出的兑换码不会被收回。领取者浏览器中保存的兑换码仍可查看、复制，但无法再标记使用。
-      </p>
+    <Dialog title={t('manage.delete')} onClose={onClose} locked={busy}>
+      <p className="muted">{t('manage.deleteConfirm', { name: pool.name })}</p>
+      <p className="delete-pool-note">{t('manage.deleteNote')}</p>
+      <p className="field-help">{t('manage.deleteHistory')}</p>
       <Notice>{error}</Notice>
       <div className="dialog-actions">
         <button className="button secondary" autoFocus disabled={busy} onClick={onClose}>
-          取消
+          {t('common.cancel')}
         </button>
         <button className="button danger" disabled={busy} onClick={() => void remove()}>
-          {busy ? '正在删除…' : '确认删除'}
+          {busy ? t('manage.deleting') : t('manage.confirmDelete')}
         </button>
       </div>
     </Dialog>
@@ -61,20 +62,22 @@ export function ImportDialog({
   onClose: () => void;
   onImported: () => void;
 }) {
+  const { number, message } = useFormat();
+  const { t } = useTranslation();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<Message | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const count = text.split(/\r\n|\n|\r/).filter((line) => line.trim()).length;
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
-    setError('');
+    setError(null);
     setResult(null);
     try {
       parseImport(text);
     } catch (e) {
-      setError((e as Error).message);
+      setError(toMessage(e));
       return;
     }
     setBusy(true);
@@ -89,20 +92,27 @@ export function ImportDialog({
       );
       onImported();
     } catch (e) {
-      setError((e as Error).message);
+      setError(toMessage(e));
     } finally {
       setBusy(false);
     }
   }
   return (
-    <Dialog title="导入兑换码" onClose={onClose} locked={busy} wide>
+    <Dialog title={t('manage.import')} onClose={onClose} locked={busy} wide>
       <p className="muted">
-        导入至 <strong>{pool.name}</strong>。每行一个兑换码，错误行会跳过，其余正常导入。
+        <Trans
+          i18nKey="manage.importHelp"
+          values={{ name: pool.name }}
+          components={{ strong: <strong /> }}
+        />
       </p>
       <Notice>{error}</Notice>
       <form onSubmit={submit}>
         <label htmlFor="codes-input">
-          兑换码内容<span className={count > 500 ? 'field-error' : 'muted'}>{count} / 500 条</span>
+          {t('manage.codeInput')}
+          <span className={count > 500 ? 'field-error' : 'muted'}>
+            {t('manage.importLimit', { count })}
+          </span>
         </label>
         <textarea
           id="codes-input"
@@ -116,30 +126,33 @@ export function ImportDialog({
           }}
           disabled={busy}
         />
-        <p className="field-help">每条最长 100 字；忽略空行和首尾空白，区分大小写。</p>
+        <p className="field-help">{t('manage.importRules')}</p>
         {result && (
           <div className="import-result">
             <Notice kind={result.failed ? 'info' : 'success'}>
-              导入完成：成功 {result.succeeded} 条，失败 {result.failed} 条。
+              {t('manage.importResult', {
+                succeeded: number(result.succeeded),
+                failed: number(result.failed),
+              })}
             </Notice>
             {result.failures.length > 0 && (
               <div className="table-scroll failures">
                 <table>
                   <thead>
                     <tr>
-                      <th>原始行号</th>
-                      <th>兑换码</th>
-                      <th>失败原因</th>
+                      <th>{t('manage.originalLine')}</th>
+                      <th>{t('manage.code')}</th>
+                      <th>{t('manage.failureReason')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {result.failures.map((row) => (
                       <tr key={row.line}>
-                        <td>第 {row.line} 行</td>
+                        <td>{t('manage.line', { line: number(row.line) })}</td>
                         <td>
                           <code>{row.code}</code>
                         </td>
-                        <td>{row.reason}</td>
+                        <td>{message({ code: row.reasonCode, params: row.params })}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -150,13 +163,13 @@ export function ImportDialog({
         )}
         <div className="dialog-actions">
           <button type="button" className="button secondary" disabled={busy} onClick={onClose}>
-            关闭
+            {t('common.close')}
           </button>
           <button
             className="button primary"
             disabled={busy || count === 0 || count > 500 || result !== null}
           >
-            {busy ? '正在导入…' : '开始导入'}
+            {busy ? t('manage.importing') : t('manage.startImport')}
             <Icon name="arrow" size={16} />
           </button>
         </div>
@@ -175,13 +188,14 @@ export function PoolNameDialog({
   onSaved: (id: number) => void;
   onImport?: (pool: Pick<Pool, 'id' | 'name'>) => void;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState(pool?.name ?? '');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<Message | null>(null);
   async function save(importNext: boolean) {
     if (busy || !name.trim()) return;
     setBusy(true);
-    setError('');
+    setError(null);
     try {
       const json = { name: name.trim() };
       const result = pool
@@ -192,18 +206,18 @@ export function PoolNameDialog({
       if (!pool && importNext && onImport) onImport({ id: result.id, name: json.name });
       else onSaved(result.id);
     } catch (e) {
-      setError((e as Error).message);
+      setError(toMessage(e));
     } finally {
       setBusy(false);
     }
   }
   return (
-    <Dialog title={pool ? '修改码池名称' : '新建兑换码池'} onClose={onClose} locked={busy}>
-      <p className="muted">
-        {pool
-          ? '修改后原领码 Key 和链接继续有效，已有兑换码和领取记录不受影响。'
-          : '为这次发放起个名字，下一步导入兑换码；也可以先创建，稍后导入。'}
-      </p>
+    <Dialog
+      title={pool ? t('manage.renameTitle') : t('manage.create')}
+      onClose={onClose}
+      locked={busy}
+    >
+      <p className="muted">{pool ? t('manage.renameHelp') : t('manage.createHelp')}</p>
       <Notice>{error}</Notice>
       <form
         onSubmit={(e) => {
@@ -211,20 +225,20 @@ export function PoolNameDialog({
           void save(true);
         }}
       >
-        <label htmlFor="pool-name">码池名称</label>
+        <label htmlFor="pool-name">{t('manage.name')}</label>
         <input
           id="pool-name"
           autoFocus
-          placeholder="例如：九月会员福利"
+          placeholder={t('manage.nameExample')}
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
           disabled={busy}
         />
-        <p className="field-help">名称不能为空，也不能与当前空间的其他码池重名。</p>
+        <p className="field-help">{t('manage.nameHelp')}</p>
         <div className={`dialog-actions${!pool && onImport ? ' create-pool-actions' : ''}`}>
           <button type="button" className="button secondary" disabled={busy} onClick={onClose}>
-            取消
+            {t('common.cancel')}
           </button>
           {!pool && onImport && (
             <button
@@ -233,14 +247,20 @@ export function PoolNameDialog({
               disabled={busy || !name.trim()}
               onClick={() => void save(false)}
             >
-              稍后导入
+              {t('manage.importLater')}
             </button>
           )}
           <button
             className="button primary"
             disabled={busy || !name.trim() || name.trim() === pool?.name}
           >
-            {busy ? '保存中…' : pool ? '保存名称' : onImport ? '创建并导入' : '创建空池'}
+            {busy
+              ? t('manage.saving')
+              : pool
+                ? t('manage.saveName')
+                : onImport
+                  ? t('manage.createImport')
+                  : t('manage.createEmpty')}
             <Icon name={pool ? 'check' : onImport ? 'arrow' : 'plus'} size={16} />
           </button>
         </div>

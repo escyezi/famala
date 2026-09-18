@@ -1,3 +1,4 @@
+import { i18n, i18nReady } from '../../src/react-app/i18n/index.ts';
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, expect, vi } from 'vitest';
@@ -16,7 +17,9 @@ if (!HTMLDialogElement.prototype.close) {
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await i18nReady;
+  await i18n.changeLanguage('zh-CN');
   localStorage.clear();
   window.history.replaceState(null, '', '/');
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});

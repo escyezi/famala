@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { usePools } from '../hooks/usePools.ts';
 import { PoolList } from './PoolList.tsx';
 import { PoolDetail } from './PoolDetail.tsx';
@@ -10,6 +11,7 @@ export function Manager({
   poolId?: string;
   onNavigate: (path: string) => void;
 }) {
+  const { t } = useTranslation();
   const { pools, loading, error, refresh, removePool } = usePools(poolId);
   const pool = pools?.find((item) => String(item.id) === poolId);
   return (
@@ -41,19 +43,19 @@ export function Manager({
               }}
             >
               <Icon name="arrow" size={16} />
-              返回码池列表
+              {t('manage.backToPools')}
             </a>
             <div className="page-heading">
               <div>
-                <div className="eyebrow">DISTRIBUTOR WORKSPACE</div>
-                <h1>码池详情</h1>
-                <p className="muted">查看码池信息、领取明细与分享设置。</p>
+                <div className="eyebrow">{t('manage.eyebrow')}</div>
+                <h1>{t('manage.details')}</h1>
+                <p className="muted">{t('manage.detailsHelp')}</p>
               </div>
               <button
                 type="button"
                 className="text-button refresh-button"
-                aria-label="刷新数据"
-                title="刷新数据"
+                aria-label={t('common.refresh')}
+                title={t('common.refresh')}
                 onClick={refresh}
               >
                 <Icon name="refresh" size={18} />
@@ -63,9 +65,9 @@ export function Manager({
             <div className="empty-state bordered">
               {loading || !pools
                 ? error
-                  ? '数据加载失败，请点击刷新数据重试。'
-                  : '正在加载码池详情…'
-                : '码池不存在或无权访问。'}
+                  ? t('manage.loadFailed')
+                  : t('manage.loadingDetails')
+                : t('manage.missing')}
             </div>
           </>
         )}

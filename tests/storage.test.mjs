@@ -34,9 +34,9 @@ test('simultaneous saves merge different pools without overwriting, and keep the
     saveClaim(record('B')),
     saveClaim(record('A', 'second')),
   ]);
-  assert.equal(first, '');
-  assert.equal(other, '');
-  assert.match(conflict, /另一个兑换码/);
+  assert.equal(first, null);
+  assert.equal(other, null);
+  assert.equal(conflict.code, 'STORAGE_CONFLICT');
   assert.equal(readRecords().records.length, 2);
   assert.equal(readRecords().records[0].code, 'first');
 });
@@ -58,8 +58,8 @@ test('corrupt or inaccessible storage is reported and never silently overwritten
   const setItem = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
     throw new Error('QuotaExceededError');
   });
-  assert.match(await saveClaim(record('A')), /本地保存失败/);
+  assert.equal((await saveClaim(record('A'))).code, 'STORAGE_WRITE_FAILED');
   setItem.mockRestore();
   navigator.locks = undefined;
-  assert.match(await saveClaim(record('A')), /复制保存/);
+  assert.equal((await saveClaim(record('A'))).code, 'STORAGE_UNSUPPORTED');
 });

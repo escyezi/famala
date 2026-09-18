@@ -1,3 +1,4 @@
+import { useTranslation, Trans } from 'react-i18next';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { Session } from '../../shared/api-types.ts';
 import { Icon } from './ui.tsx';
@@ -11,6 +12,7 @@ export function WorkspaceMenu({
   busy: boolean;
   onLogout: () => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -46,31 +48,34 @@ export function WorkspaceMenu({
       <button
         className="workspace-menu-trigger"
         ref={trigger}
-        aria-label="我的发码空间"
+        aria-label={t('auth.workspace')}
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((value) => !value)}
       >
-        <span>
-          <span className="workspace-menu-label-prefix">我的发码</span>空间
-        </span>
+        <span>{t('auth.workspaceShort')}</span>
         <span className="workspace-menu-chevron" aria-hidden="true" />
       </button>
       {open && (
         <div className="workspace-menu-panel" id={panelId}>
-          <strong>我的发码空间</strong>
+          <strong>{t('auth.workspace')}</strong>
           <p className="workspace-menu-id">
-            空间编号 <code>{session ? session.spaceId : '正在连接…'}</code>
+            <Trans
+              i18nKey="auth.workspaceId"
+              values={{ id: session ? session.spaceId : t('common.connecting') }}
+              components={{ id: <code /> }}
+            />
           </p>
           <div className="workspace-menu-note">
             <Icon name="key" size={16} />
             <p>
-              记得保管好发码 Key<small>登录态有效期为 7 天</small>
+              {t('auth.rememberKey')}
+              <small>{t('auth.sessionDuration')}</small>
             </p>
           </div>
           <button className="workspace-menu-logout" onClick={onLogout} disabled={busy}>
             <Icon name="logout" size={17} />
-            退出登录
+            {t('auth.logout')}
           </button>
         </div>
       )}

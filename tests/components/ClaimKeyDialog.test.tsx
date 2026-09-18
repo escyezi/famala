@@ -35,7 +35,7 @@ test('空白 Key 不可提交，校验期间禁止重复提交，成功后传出
 test('无效 Key 展示错误，修正后可重新校验', async () => {
   const validate = vi
     .fn()
-    .mockImplementationOnce(() => json({ error: '领码 Key 无效' }, 404))
+    .mockImplementationOnce(() => json({ code: 'INVALID_CLAIM_KEY' }, 404))
     .mockImplementationOnce(() => json(publicPool));
   mockApi({ 'POST /api/claim/validate': validate });
   const user = userEvent.setup();

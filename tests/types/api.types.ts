@@ -59,7 +59,7 @@ export async function apiTypeChecks() {
   // @ts-expect-error Successful payload has no invented field.
   void created.nonexistent;
   // @ts-expect-error Error variants have been excluded by the response helper.
-  void renamed.error;
+  void renamed.code;
   // @ts-expect-error API callers cannot supply arbitrary response interfaces.
   api<{ key: string }>(rpc.api.config.$get());
 }

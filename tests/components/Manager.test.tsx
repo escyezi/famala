@@ -40,7 +40,7 @@ test('创建并导入不等待列表刷新，导入失败可重试且不会重�
   const create = vi.fn(() => json({ id: 3 } satisfies ApiResponses['createPool'], 201));
   const importCodes = vi
     .fn()
-    .mockImplementationOnce(() => json({ error: '暂时无法导入，请重试' }, 503))
+    .mockImplementationOnce(() => json({ code: 'SERVICE_UNAVAILABLE' }, 503))
     .mockImplementationOnce(() =>
       json({ succeeded: 1, failed: 0, failures: [] } satisfies ApiResponses['importCodes']),
     );
@@ -62,7 +62,7 @@ test('创建并导入不等待列表刷新，导入失败可重试且不会重�
   expect(onNavigate).not.toHaveBeenCalled();
   await user.type(within(dialog).getByLabelText(/兑换码内容/), 'NEW-CODE');
   await user.click(within(dialog).getByRole('button', { name: '开始导入' }));
-  expect(await within(dialog).findByRole('alert')).toHaveTextContent('暂时无法导入，请重试');
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('服务暂时不可用');
   expect(within(dialog).getByLabelText(/兑换码内容/)).toHaveValue('NEW-CODE');
   await user.click(within(dialog).getByRole('button', { name: '开始导入' }));
   expect(await within(dialog).findByText('导入完成：成功 1 条，失败 0 条。')).toBeVisible();
@@ -79,7 +79,7 @@ test('修改名称遇到重名时保持弹窗，修正后更新详情标题', as
   let name = pool.name;
   const rename = vi.fn((init: RequestInit) => {
     const next = JSON.parse(init.body as string).name as string;
-    if (next === '重复名称') return json({ error: '码池名称已存在' }, 409);
+    if (next === '重复名称') return json({ code: 'POOL_NAME_EXISTS' }, 409);
     name = next;
     return json({ id: pool.id, name } satisfies ApiResponses['renamePool']);
   });
@@ -107,7 +107,7 @@ test('修改名称遇到重名时保持弹窗，修正后更新详情标题', as
   await user.clear(input);
   await user.type(input, '重复名称');
   await user.click(submit);
-  expect(await screen.findByRole('alert')).toHaveTextContent('码池名称已存在');
+  expect(await screen.findByRole('alert')).toHaveTextContent('当前空间已有同名码池');
   await user.clear(input);
   await user.type(input, '新的活动');
   await user.click(submit);
@@ -129,7 +129,14 @@ test('批量导入展示原始失败行和成功数量，完成后防止重复�
     return json({
       succeeded: 1,
       failed: 1,
-      failures: [{ line: 2, code: 'CODE-A', reason: '与本批第 1 行重复' }],
+      failures: [
+        {
+          line: 2,
+          code: 'CODE-A',
+          reasonCode: 'DUPLICATE_IN_BATCH',
+          params: { firstLine: 1 },
+        },
+      ],
     } satisfies ApiResponses['importCodes']);
   });
   mockApi({
@@ -284,7 +291,7 @@ test('删除需确认，取消不发请求；失败可重试，提交中不能�
   const pending = deferred<Response>();
   const remove = vi
     .fn()
-    .mockImplementationOnce(() => json({ error: '暂时无法删除' }, 500))
+    .mockImplementationOnce(() => json({ code: 'SERVICE_UNAVAILABLE' }, 500))
     .mockImplementationOnce(() => pending.promise);
   const fetch = mockApi({ ...baseRoutes, 'DELETE /api/manage/pools/1': remove });
   const user = userEvent.setup();
@@ -301,7 +308,7 @@ test('删除需确认，取消不发请求；失败可重试，提交中不能�
   await user.click(screen.getByRole('button', { name: '删除码池' }));
   dialog = screen.getByRole('dialog', { name: '删除码池' });
   await user.click(within(dialog).getByRole('button', { name: '确认删除' }));
-  expect(await within(dialog).findByRole('alert')).toHaveTextContent('暂时无法删除');
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('服务暂时不可用');
   expect(onNavigate).not.toHaveBeenCalled();
   await user.dblClick(within(dialog).getByRole('button', { name: '确认删除' }));
   expect(within(dialog).getByRole('button', { name: '正在删除…' })).toBeDisabled();
@@ -318,7 +325,7 @@ test('删除需确认，取消不发请求；失败可重试，提交中不能�
 test('码池已被其他页面删除时，再次删除也返回列表', async () => {
   mockApi({
     ...baseRoutes,
-    'DELETE /api/manage/pools/1': () => json({ error: '码池不存在' }, 404),
+    'DELETE /api/manage/pools/1': () => json({ code: 'POOL_NOT_FOUND' }, 404),
   });
   const user = userEvent.setup();
   const { onNavigate } = renderManager(String(pool.id));

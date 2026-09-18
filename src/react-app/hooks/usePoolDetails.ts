@@ -1,3 +1,5 @@
+import { toMessage } from '../../shared/messages.ts';
+import type { Message } from '../../shared/messages.ts';
 import { useEffect, useState } from 'react';
 import type { CodeFilter, CodePage, CodePageSize, Pool } from '../../shared/api-types.ts';
 import { api, rpc } from '../api.ts';
@@ -10,9 +12,9 @@ export function usePoolDetails(pool: Pool, onRefresh: () => void) {
     revision: 0,
   });
   const [codes, setCodes] = useState<CodePage | null>(null);
-  const [codesError, setCodesError] = useState('');
+  const [codesError, setCodesError] = useState<Message | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<Message | null>(null);
   const { page, filter, pageSize, revision } = query;
 
   useEffect(() => {
@@ -26,33 +28,33 @@ export function usePoolDetails(pool: Pool, onRefresh: () => void) {
       .then((result) => {
         if (controller.signal.aborted) return;
         setCodes(result);
-        setCodesError('');
+        setCodesError(null);
       })
       .catch((error: Error) => {
-        if (!controller.signal.aborted) setCodesError(error.message);
+        if (!controller.signal.aborted) setCodesError(toMessage(error));
       });
     return () => controller.abort();
   }, [pool.id, page, filter, pageSize, revision]);
 
   function updateQuery(next: Partial<Pick<typeof query, 'page' | 'filter' | 'pageSize'>> = {}) {
     setCodes(null);
-    setCodesError('');
+    setCodesError(null);
     setQuery((current) => ({ ...current, ...next, revision: current.revision + 1 }));
   }
   function refresh() {
-    setError('');
+    setError(null);
     updateQuery();
     onRefresh();
   }
   function imported() {
-    setError('');
+    setError(null);
     updateQuery({ page: 1 });
     onRefresh();
   }
   async function status() {
     if (busy) return;
     setBusy(true);
-    setError('');
+    setError(null);
     try {
       await api(
         rpc.api.manage.pools[':id'].status.$post({
@@ -62,7 +64,7 @@ export function usePoolDetails(pool: Pool, onRefresh: () => void) {
       );
       refresh();
     } catch (error) {
-      setError((error as Error).message);
+      setError(toMessage(error));
     } finally {
       setBusy(false);
     }
