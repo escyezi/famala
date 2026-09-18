@@ -6,8 +6,15 @@ export interface ClaimRecord {
   code: string;
   claimedAt: number;
 }
+export const MAX_POOLS_PER_SPACE = 50;
+export const MAX_CODES_PER_POOL = 5000;
 export type ImportReason =
-  'CODE_TOO_LONG' | 'CODE_NULL' | 'DUPLICATE_IN_BATCH' | 'DUPLICATE_IN_POOL' | 'CODE_NOT_IN_POOL';
+  | 'CODE_TOO_LONG'
+  | 'CODE_NULL'
+  | 'DUPLICATE_IN_BATCH'
+  | 'DUPLICATE_IN_POOL'
+  | 'CODE_NOT_IN_POOL'
+  | 'POOL_CODE_LIMIT';
 export function importFailure(
   row: { line: number; code: string },
   reasonCode: ImportReason,

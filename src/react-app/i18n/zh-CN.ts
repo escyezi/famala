@@ -154,7 +154,8 @@ export const zh = {
     deleteHistory: '已发出的兑换码不会被收回。领取者浏览器中保存的兑换码仍可查看、复制。',
     deleting: '正在删除…',
     confirmDelete: '确认删除',
-    importHelp: '导入至 <strong>{{name}}</strong>。每行一个兑换码，错误行会跳过，其余正常导入。',
+    importHelp:
+      '导入至 <strong>{{name}}</strong>。每行一个兑换码，错误行会跳过。每池最多 {{limit, number}} 条（含已领取、已兑换），超出容量的行会导入失败。',
     codeInput: '兑换码内容',
     importLimit: '{{count, number}} / 500 条',
     importRules: '每条最长 100 字；忽略空行和首尾空白，区分大小写。',
@@ -167,7 +168,8 @@ export const zh = {
     renameTitle: '修改码池名称',
     create: '新建兑换码池',
     renameHelp: '修改后原领码 Key 和链接继续有效，已有兑换码和领取记录不受影响。',
-    createHelp: '为这次发放起个名字，下一步导入兑换码；也可以先创建，稍后导入。',
+    createHelp:
+      '为这次发放起个名字，下一步导入兑换码；也可以先创建，稍后导入。每个空间最多 {{limit, number}} 个码池。',
     name: '码池名称',
     nameExample: '例如：九月会员福利',
     nameHelp: '名称不能为空，也不能与当前空间的其他码池重名。',
@@ -232,6 +234,8 @@ export const zh = {
     eyebrow: 'A LITTLE SOMETHING FOR YOU',
   },
   errors: {
+    SPACE_POOL_LIMIT: '每个空间最多 {{limit, number}} 个码池，请删除不需要的码池后重试',
+    POOL_CODE_LIMIT: '每个码池最多 {{limit, number}} 条兑换码（含已领取、已兑换），容量不足',
     REQUEST_FAILED: '请求失败，请稍后重试',
     NETWORK_ERROR: '网络连接失败，请检查网络后重试。',
     CLAIM_NETWORK_ERROR: '网络连接失败，本次兑换码可能已经发出且无法找回。请确认网络后重新验证。',

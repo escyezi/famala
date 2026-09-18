@@ -15,7 +15,12 @@ import {
   sessionCookie,
 } from './auth.ts';
 import { turnstileConfig, verifyTurnstile } from './turnstile.ts';
-import { parseImport, importFailure } from '../shared/contracts.ts';
+import {
+  parseImport,
+  importFailure,
+  MAX_POOLS_PER_SPACE,
+  MAX_CODES_PER_POOL,
+} from '../shared/contracts.ts';
 import type { ClaimRecord } from '../shared/contracts.ts';
 import {
   loginInput,
@@ -180,18 +185,25 @@ const routes = app
   })
   .post('/api/manage/pools', poolNameInput, async (c) => {
     const { name } = c.req.valid('json');
-    const pool = await drizzle(c.env.DB)
-      .insert(codePools)
-      .values({
-        spaceId: c.get('spaceId'),
-        name: name.trim(),
-        claimKey: randomKey('c_'),
-        createdAt: Date.now(),
-      })
-      .onConflictDoNothing({ target: [codePools.spaceId, codePools.name] })
-      .returning()
-      .get();
-    if (!pool) return c.json(errorBody('POOL_NAME_EXISTS'), 409);
+    const db = drizzle(c.env.DB);
+    const spaceId = c.get('spaceId');
+    // Check capacity in the insert itself so concurrent creates cannot exceed the limit.
+    const [pool] = await db.all<{ id: number }>(sql`
+      INSERT INTO code_pools (space_id, name, claim_key, created_at)
+      SELECT ${spaceId}, ${name}, ${randomKey('c_')}, ${Date.now()}
+      WHERE (SELECT count(*) FROM code_pools WHERE space_id = ${spaceId}) < ${MAX_POOLS_PER_SPACE}
+      ON CONFLICT (space_id, name) DO NOTHING RETURNING id
+    `);
+    if (!pool) {
+      const duplicate = await db
+        .select({ id: codePools.id })
+        .from(codePools)
+        .where(and(eq(codePools.spaceId, spaceId), eq(codePools.name, name)))
+        .get();
+      return duplicate
+        ? c.json(errorBody('POOL_NAME_EXISTS'), 409)
+        : c.json(errorBody('SPACE_POOL_LIMIT', { limit: MAX_POOLS_PER_SPACE }), 409);
+    }
     return c.json({ id: pool.id }, 201);
   })
   .delete('/api/manage/pools/:id', async (c) => {
@@ -247,22 +259,49 @@ const routes = app
     const { valid, failures } = parsed;
     const now = Date.now();
     let succeeded = 0;
-    // 20 rows × 2 values + pool/space IDs stays below D1's 100-parameter limit. The unique
-    // constraint handles concurrent imports; only duplicate codes are skipped.
-    for (let offset = 0; offset < valid.length; offset += 20) {
-      const chunk = valid.slice(offset, offset + 20);
-      const tuples = chunk.map((row) => sql`(${row.code}, ${now})`);
-      const inserted = await drizzle(c.env.DB).all<{ code: string }>(sql`
-      WITH incoming(code, created_at) AS (VALUES ${sql.join(tuples, sql`, `)})
-      INSERT INTO redemption_codes (pool_id, code, created_at)
-      SELECT p.id, incoming.code, incoming.created_at FROM incoming CROSS JOIN code_pools p
-      WHERE p.id = ${pool.id} AND p.space_id = ${c.get('spaceId')}
-      ON CONFLICT (pool_id, code) DO NOTHING RETURNING code
-    `);
-      const saved = new Set(inserted.map((row) => row.code));
+    // Read duplicates and insert in one transaction so deletion cannot change failure reasons.
+    // 30 rows × 3 values + 4 fixed parameters = 94 (D1 allows 100 per statement).
+    // At most 17 chunks × 2 statements + 3 session/ownership checks = 37 queries.
+    const chunkSize = 30;
+    for (let offset = 0; offset < valid.length; offset += chunkSize) {
+      const chunk = valid.slice(offset, offset + chunkSize);
+      const placeholders = chunk.map(() => '?').join(',');
+      const tuples = chunk.map(() => '(?, ?, ?)').join(',');
+      const [previous, inserted] = await c.env.DB.batch<{ code: string }>([
+        c.env.DB.prepare(
+          `SELECT code FROM redemption_codes WHERE pool_id = ? AND code IN (${placeholders})`,
+        ).bind(pool.id, ...chunk.map((row) => row.code)),
+        c.env.DB.prepare(
+          `
+          WITH incoming(code, created_at, line) AS (VALUES ${tuples})
+          INSERT INTO redemption_codes (pool_id, code, created_at)
+          SELECT p.id, incoming.code, incoming.created_at FROM incoming CROSS JOIN code_pools p
+          WHERE p.id = ? AND p.space_id = ?
+            AND NOT EXISTS (SELECT 1 FROM redemption_codes r WHERE r.pool_id = p.id AND r.code = incoming.code)
+          ORDER BY incoming.line
+          LIMIT max(0, ? - (SELECT count(*) FROM redemption_codes WHERE pool_id = ?))
+          ON CONFLICT (pool_id, code) DO NOTHING RETURNING code
+        `,
+        ).bind(
+          ...chunk.flatMap((row) => [row.code, now, row.line]),
+          pool.id,
+          c.get('spaceId'),
+          MAX_CODES_PER_POOL,
+          pool.id,
+        ),
+      ]);
+      const existing = new Set(previous.results.map((row) => row.code));
+      const saved = new Set(inserted.results.map((row) => row.code));
       succeeded += saved.size;
-      for (const row of chunk)
-        if (!saved.has(row.code)) failures.push(importFailure(row, 'DUPLICATE_IN_POOL'));
+      for (const row of chunk) {
+        if (!saved.has(row.code)) {
+          failures.push(
+            existing.has(row.code)
+              ? importFailure(row, 'DUPLICATE_IN_POOL')
+              : importFailure(row, 'POOL_CODE_LIMIT', { limit: MAX_CODES_PER_POOL }),
+          );
+        }
+      }
     }
     // Deletion between import chunks must not report success or duplicate codes.
     await ownedPool(c);

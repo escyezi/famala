@@ -106,6 +106,272 @@ const claim = (p, overrides = {}, bindings = env) =>
     bindings,
   );
 
+test('workspace pool limit is atomic, includes stopped pools and frees capacity after deletion', async () => {
+  const owner = await space();
+  await env.DB.prepare(
+    `
+    WITH RECURSIVE numbers(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM numbers WHERE n < 49)
+    INSERT INTO code_pools (space_id, name, claim_key, status, created_at)
+    SELECT ?, 'seed-' || n, ? || n, 'stopped', 1 FROM numbers
+  `,
+  )
+    .bind(owner.body.spaceId, crypto.randomUUID())
+    .run();
+  const attempts = await Promise.all(
+    Array.from({ length: 4 }, (_, i) =>
+      request('/api/manage/pools', { name: `new-${i}` }, owner.cookie),
+    ),
+  );
+  assert.equal(attempts.filter((r) => r.status === 201).length, 1);
+  for (const response of attempts.filter((r) => r.status !== 201)) {
+    assert.equal(response.status, 409);
+    assert.deepEqual(response.body, { code: 'SPACE_POOL_LIMIT', params: { limit: 50 } });
+  }
+  assert.equal((await request('/api/manage/pools', undefined, owner.cookie)).body.items.length, 50);
+  assert.equal(
+    (await request('/api/manage/pools', { name: 'seed-1' }, owner.cookie)).body.code,
+    'POOL_NAME_EXISTS',
+  );
+  const outsider = await space();
+  await pool(outsider.cookie, 'seed-1');
+  const created = attempts.find((r) => r.status === 201);
+  assert.equal((await deleted({ id: created.body.id }, owner.cookie)).status, 200);
+  await pool(owner.cookie, 'replacement');
+  assert.equal(
+    (await request('/api/manage/pools', { name: 'overflow' }, owner.cookie)).body.code,
+    'SPACE_POOL_LIMIT',
+  );
+});
+
+async function seedCodes(p, count) {
+  await env.DB.prepare(
+    `
+    WITH RECURSIVE numbers(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM numbers WHERE n < ?)
+    INSERT INTO redemption_codes (pool_id, code, created_at)
+    SELECT ?, 'seed-' || n, 1 FROM numbers
+  `,
+  )
+    .bind(count, p.id)
+    .run();
+}
+
+test('pool capacity imports valid new codes in order and counts claimed and redeemed codes', async () => {
+  const owner = await space();
+  const p = await pool(owner.cookie);
+  await seedCodes(p, 4980);
+  const result = await imported(
+    p,
+    owner.cookie,
+    ['seed-1', 'X'.repeat(101), ...Array.from({ length: 25 }, (_, i) => `NEW-${i}`)].join('\n'),
+  );
+  assert.equal(result.body.succeeded, 20);
+  assert.equal(result.body.failed, 7);
+  assert.deepEqual(
+    result.body.failures.map((r) => [r.line, r.reasonCode]),
+    [
+      [1, 'DUPLICATE_IN_POOL'],
+      [2, 'CODE_TOO_LONG'],
+      ...Array.from({ length: 5 }, (_, i) => [23 + i, 'POOL_CODE_LIMIT']),
+    ],
+  );
+  assert.ok(result.body.failures.slice(2).every((r) => r.params.limit === 5000));
+  assert.equal((await claim(p)).status, 200);
+  assert.equal((await markRedeemed(p, owner.cookie, 'seed-2')).body.marked, 1);
+  const full = await imported(p, owner.cookie, 'seed-1\nOVERFLOW');
+  assert.equal(full.body.succeeded, 0);
+  assert.deepEqual(
+    full.body.failures.map((r) => r.reasonCode),
+    ['DUPLICATE_IN_POOL', 'POOL_CODE_LIMIT'],
+  );
+  const stats = await request(`/api/manage/pools/${p.id}/codes`, undefined, owner.cookie);
+  assert.deepEqual(stats.body.summary, { total: 5000, remaining: 4998, claimed: 1, redeemed: 1 });
+  const removable = await env.DB.prepare(
+    "SELECT id FROM redemption_codes WHERE pool_id = ? AND code = 'NEW-0'",
+  )
+    .bind(p.id)
+    .first();
+  assert.equal(
+    (
+      await request(
+        `/api/manage/pools/${p.id}/codes/${removable.id}`,
+        {},
+        owner.cookie,
+        env,
+        {},
+        'DELETE',
+      )
+    ).status,
+    200,
+  );
+  assert.equal((await imported(p, owner.cookie, 'REPLACEMENT\nOVERFLOW')).body.succeeded, 1);
+  const other = await pool(owner.cookie);
+  assert.equal((await imported(other, owner.cookie, 'OVERFLOW')).body.succeeded, 1);
+});
+
+test('concurrent imports cannot exceed 5000 codes per pool', async () => {
+  const owner = await space();
+  const p = await pool(owner.cookie);
+  await seedCodes(p, 4989);
+  const attempts = await Promise.all(
+    Array.from({ length: 4 }, (_, batch) =>
+      imported(p, owner.cookie, Array.from({ length: 25 }, (_, i) => `${batch}-${i}`).join('\n')),
+    ),
+  );
+  assert.ok(attempts.every((r) => r.status === 200));
+  assert.equal(
+    attempts.reduce((sum, r) => sum + r.body.succeeded, 0),
+    11,
+  );
+  assert.equal(
+    attempts.reduce((sum, r) => sum + r.body.failed, 0),
+    89,
+  );
+  assert.ok(
+    attempts.every((r) => r.body.failures.every((f) => f.reasonCode === 'POOL_CODE_LIMIT')),
+  );
+  assert.equal(
+    (
+      await env.DB.prepare('SELECT count(*) AS total FROM redemption_codes WHERE pool_id = ?')
+        .bind(p.id)
+        .first()
+    ).total,
+    5000,
+  );
+});
+
+// Enforce production SQL budgets even though local D1 does not enforce invocation quotas.
+// afterWrite simulates another request running as soon as an import transaction commits.
+function importTestDB(afterWrite = async () => {}) {
+  let queries = 0;
+  let maxParameters = 0;
+  const statements = new WeakMap();
+  const countQueries = (count) => {
+    queries += count;
+    assert.ok(queries <= 50, `D1 query budget exceeded: ${queries}`);
+  };
+  function wrap(statement, query) {
+    const wrapped = new Proxy(statement, {
+      get(target, key) {
+        if (key === 'bind')
+          return (...params) => {
+            maxParameters = Math.max(maxParameters, params.length);
+            assert.ok(params.length <= 100, `D1 parameter limit exceeded: ${params.length}`);
+            return wrap(target.bind(...params), query);
+          };
+        if (['all', 'raw', 'first', 'run'].includes(key))
+          return async (...args) => {
+            countQueries(1);
+            const result = await target[key](...args);
+            if (/WITH incoming/.test(query)) await afterWrite();
+            return result;
+          };
+        const value = target[key];
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    statements.set(wrapped, { statement, query });
+    return wrapped;
+  }
+  return {
+    db: {
+      prepare: (query) => wrap(env.DB.prepare(query), query),
+      async batch(batch) {
+        countQueries(batch.length);
+        const entries = batch.map((statement) => statements.get(statement));
+        const results = await env.DB.batch(entries.map((entry) => entry.statement));
+        if (entries.some((entry) => /WITH incoming/.test(entry.query))) await afterWrite();
+        return results;
+      },
+    },
+    stats: () => ({ queries, maxParameters }),
+  };
+}
+
+test.each(['new', 'duplicate', 'full', 'partial'])(
+  '500-code %s import fits D1 query and parameter budgets',
+  async (scenario) => {
+    const owner = await space();
+    const p = await pool(owner.cookie);
+    if (scenario !== 'new')
+      await seedCodes(p, scenario === 'duplicate' ? 500 : scenario === 'full' ? 5000 : 4985);
+    const text = Array.from({ length: 500 }, (_, i) =>
+      scenario === 'duplicate' ? `seed-${i + 1}` : `NEW-${i}`,
+    ).join('\n');
+    const measured = importTestDB();
+    const result = await request(`/api/manage/pools/${p.id}/import`, { text }, owner.cookie, {
+      ...env,
+      DB: measured.db,
+    });
+    assert.equal(result.status, 200);
+    const expected = scenario === 'new' ? 500 : scenario === 'partial' ? 15 : 0;
+    assert.equal(result.body.succeeded, expected);
+    assert.equal(result.body.failed, 500 - expected);
+    assert.ok(
+      result.body.failures.every(
+        (failure) =>
+          failure.reasonCode ===
+          (scenario === 'duplicate' ? 'DUPLICATE_IN_POOL' : 'POOL_CODE_LIMIT'),
+      ),
+    );
+    assert.ok(measured.stats().queries <= 50);
+    assert.ok(measured.stats().maxParameters <= 100);
+    assert.equal(
+      (
+        await env.DB.prepare('SELECT count(*) AS total FROM redemption_codes WHERE pool_id = ?')
+          .bind(p.id)
+          .first()
+      ).total,
+      scenario === 'new' || scenario === 'duplicate' ? 500 : 5000,
+    );
+  },
+);
+
+test.each(['duplicate deleted', 'overflow inserted'])(
+  'import failure reason uses transaction state when %s after commit',
+  async (scenario) => {
+    const owner = await space();
+    const p = await pool(owner.cookie);
+    await seedCodes(p, scenario === 'duplicate deleted' ? 1 : 5000);
+    const code = scenario === 'duplicate deleted' ? 'seed-1' : 'OVERFLOW';
+    let changes = 0;
+    const measured = importTestDB(async () => {
+      changes++;
+      const statements = [
+        env.DB.prepare("DELETE FROM redemption_codes WHERE pool_id = ? AND code = 'seed-1'").bind(
+          p.id,
+        ),
+      ];
+      if (scenario === 'overflow inserted')
+        statements.push(
+          env.DB.prepare(
+            "INSERT INTO redemption_codes (pool_id, code, created_at) VALUES (?, 'OVERFLOW', 1)",
+          ).bind(p.id),
+        );
+      await env.DB.batch(statements);
+    });
+    const result = await request(`/api/manage/pools/${p.id}/import`, { text: code }, owner.cookie, {
+      ...env,
+      DB: measured.db,
+    });
+    assert.equal(result.status, 200);
+    assert.equal(changes, 1);
+    assert.equal(result.body.succeeded, 0);
+    assert.equal(result.body.failed, 1);
+    assert.equal(
+      result.body.failures[0].reasonCode,
+      scenario === 'duplicate deleted' ? 'DUPLICATE_IN_POOL' : 'POOL_CODE_LIMIT',
+    );
+    assert.equal(
+      (
+        await env.DB.prepare('SELECT count(*) AS total FROM redemption_codes WHERE pool_id = ?')
+          .bind(p.id)
+          .first()
+      ).total,
+      scenario === 'duplicate deleted' ? 0 : 5000,
+    );
+  },
+);
+
 test('deleting a pool removes all its codes, invalidates sharing, and preserves other pools', async () => {
   const owner = await space();
   const p = await pool(owner.cookie);
@@ -205,7 +471,7 @@ test.each([
   [
     'import',
     /WITH incoming/,
-    { text: Array.from({ length: 21 }, (_, i) => `RACE-${i}`).join('\n') },
+    { text: Array.from({ length: 31 }, (_, i) => `RACE-${i}`).join('\n') },
     2,
   ],
   ['name', /UPDATE OR IGNORE/, { name: 'renamed' }, 1],
@@ -219,9 +485,13 @@ test.each([
     const bindings = {
       ...env,
       DB: {
+        async batch(statements) {
+          if (++calls === deleteAt) assert.equal((await deleted(p, owner.cookie)).status, 200);
+          return env.DB.batch(statements);
+        },
         prepare(query) {
           const statement = env.DB.prepare(query);
-          if (!pattern.test(query)) return statement;
+          if (suffix === 'import' || !pattern.test(query)) return statement;
           return {
             bind(...params) {
               const bound = statement.bind(...params);

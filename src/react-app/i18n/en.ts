@@ -162,7 +162,7 @@ export const en = {
     deleting: 'Deleting…',
     confirmDelete: 'Confirm deletion',
     importHelp:
-      'Import into <strong>{{name}}</strong>. Enter one code per line. Invalid lines will be skipped; the rest will be imported.',
+      'Import into <strong>{{name}}</strong>. Enter one code per line. Invalid lines will be skipped. Each pool holds up to {{limit, number}} codes, including claimed and redeemed codes. Lines exceeding capacity will fail.',
     codeInput: 'Codes to import',
     importLimit: '{{count, number}} / 500 codes',
     importRules:
@@ -178,7 +178,7 @@ export const en = {
     renameHelp:
       'The existing claim key and link will still work. Codes and claim records will stay unchanged.',
     createHelp:
-      'Name this distribution, then import codes. You can also create an empty pool and import later.',
+      'Name this distribution, then import codes. You can also create an empty pool and import later. Each workspace holds up to {{limit, number}} pools.',
     name: 'Code pool name',
     nameExample: 'For example: September member rewards',
     nameHelp: 'Enter a name that is unique within this workspace.',
@@ -244,6 +244,10 @@ export const en = {
     eyebrow: 'A LITTLE SOMETHING FOR YOU',
   },
   errors: {
+    SPACE_POOL_LIMIT:
+      'Each workspace holds up to {{limit, number}} pools. Delete an unneeded pool and try again.',
+    POOL_CODE_LIMIT:
+      'Each pool holds up to {{limit, number}} codes, including claimed and redeemed codes. There is not enough capacity.',
     REQUEST_FAILED: 'Request failed. Please try again later.',
     NETWORK_ERROR: 'Network connection failed. Check your connection and try again.',
     CLAIM_NETWORK_ERROR:

@@ -4,7 +4,7 @@ import { toMessage } from '../../shared/messages.ts';
 import type { Message } from '../../shared/messages.ts';
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError, rpc } from '../api.ts';
-import { parseImport } from '../../shared/contracts.ts';
+import { parseImport, MAX_POOLS_PER_SPACE, MAX_CODES_PER_POOL } from '../../shared/contracts.ts';
 import type {
   CodeRow,
   DeleteCodesResult,
@@ -289,7 +289,7 @@ export function ImportDialog({
       <p className="muted">
         <Trans
           i18nKey={mode === 'redeemed' ? 'manage.importRedeemedHelp' : 'manage.importHelp'}
-          values={{ name: pool.name }}
+          values={{ name: pool.name, limit: MAX_CODES_PER_POOL }}
           components={{ strong: <strong /> }}
         />
       </p>
@@ -421,7 +421,9 @@ export function PoolNameDialog({
       onClose={onClose}
       locked={busy}
     >
-      <p className="muted">{pool ? t('manage.renameHelp') : t('manage.createHelp')}</p>
+      <p className="muted">
+        {pool ? t('manage.renameHelp') : t('manage.createHelp', { limit: MAX_POOLS_PER_SPACE })}
+      </p>
       <Notice>{error}</Notice>
       <form
         onSubmit={(e) => {
