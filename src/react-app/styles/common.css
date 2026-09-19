@@ -62,11 +62,12 @@
   border: 0;
   border-radius: 8px;
   background: var(--color-surface);
-  color: #3999ff;
+  color: var(--color-primary);
   line-height: 1;
 }
 .language-toggle:hover {
-  background: #f0f7ff;
+  background: #f1f6f1;
+  color: var(--color-primary-hover);
 }
 .language-icon {
   width: 32px;
