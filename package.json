@@ -2,14 +2,32 @@
   "name": "famala",
   "description": "Key-based redemption code distribution on Cloudflare Workers and D1",
   "cloudflare": {
-    "label": "Vite React Template",
+    "label": "Famala",
     "products": [
-      "Workers"
+      "Workers",
+      "D1"
     ],
     "categories": [],
     "preview_icon_url": "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/532a5378-9717-4964-385b-5fafd2160200/public",
     "preview_image_url": "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/ec7f4be5-d1d6-4e94-0851-126341745400/preview",
-    "publish": true
+    "publish": true,
+    "bindings": {
+      "DB": {
+        "description": "D1 database for application data. Cloudflare creates and binds this database during setup."
+      },
+      "ENVIRONMENT": {
+        "description": "Set to `production` for deployment. The `.env.example` development value is only for local testing."
+      },
+      "TURNSTILE_SITE_KEY": {
+        "description": "Site key of your production Managed Turnstile widget. Replace the public test key."
+      },
+      "TURNSTILE_HOSTNAMES": {
+        "description": "Allowed deployment hostnames, comma-separated, without protocol, port, or path. Also allow these hostnames in your Turnstile widget. Replace localhost values."
+      },
+      "TURNSTILE_SECRET_KEY": {
+        "description": "Secret key of the same production Turnstile widget. Replace the public test secret; never commit your real secret."
+      }
+    }
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
@@ -50,7 +68,7 @@
     "build": "tsc -b && vite build",
     "cf-typegen": "wrangler types",
     "check": "npm run format:check && npm run lint && npm test && npm run build && wrangler deploy --dry-run",
-    "deploy": "wrangler deploy",
+    "deploy": "npm run db:migrate:remote && wrangler deploy",
     "dev": "vite",
     "lint": "tsc -b && eslint .",
     "format": "prettier --write .",
@@ -62,7 +80,8 @@
     "test:watch": "vitest --watch",
     "preview": "npm run build && vite preview",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "wrangler d1 migrations apply famala-db --local",
+    "db:migrate": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
     "predev": "WRANGLER_HIDE_BANNER=true npm run db:migrate"
   },
   "type": "module"
