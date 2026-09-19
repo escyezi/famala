@@ -5,6 +5,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "famala",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "famala.cc", "custom_domain": true }],
   "main": "./src/worker/index.ts",
   "compatibility_date": "2026-09-11",
   "compatibility_flags": ["nodejs_compat"],
@@ -15,14 +18,14 @@
   "send_metrics": false,
   "vars": {
     "ENVIRONMENT": "production",
-    "TURNSTILE_SITE_KEY": "",
-    "TURNSTILE_HOSTNAMES": "",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAE9KjWgOsHigq5rl",
+    "TURNSTILE_HOSTNAMES": "famala.cc",
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "famala-db",
-      "database_id": "00000000-0000-0000-0000-000000000001",
+      "database_id": "4f2419c6-9c4c-4932-9de4-9395550cd03b",
       "migrations_dir": "drizzle",
       "remote": false,
     },

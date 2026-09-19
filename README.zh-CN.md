@@ -18,7 +18,7 @@ npm run dev
 
 如果已有 `.env`，请合并示例配置，不要直接覆盖。从旧版升级时，将 `.dev.vars` 的配置迁移到 `.env` 后移除 `.dev.vars`，否则 Wrangler 会优先使用 `.dev.vars`。访问 <http://127.0.0.1:5173>。`predev` 脚本会自动应用本地 D1 迁移，本地数据保存在 `.wrangler/state/`，重启后仍会保留。
 
-唯一的 `.env.example` 已填入可直接使用的本地配置：开发模式、Turnstile 公开测试密钥和本地主机名。本地 D1 使用 `wrangler.jsonc` 中的占位绑定。服务端验证仍需访问 `challenges.cloudflare.com`。
+唯一的 `.env.example` 已填入可直接使用的本地配置：开发模式、Turnstile 公开测试密钥和本地主机名。本地 D1 模拟 `wrangler.jsonc` 中的 `DB` 绑定，开发时禁用远程绑定。服务端验证仍需访问 `challenges.cloudflare.com`。
 
 ### 常用命令
 
@@ -58,6 +58,10 @@ wrangler.jsonc   Cloudflare Worker、D1 和环境配置
 
 部署到 Cloudflare Workers，需要 D1 数据库和 Managed 模式的 Turnstile Widget。部署使用 Wrangler 原生命令。公开配置写入 `wrangler.jsonc` 并提交，生产密钥保存在 Cloudflare。数据库 ID、Site Key 和主机名不是访问凭证。
 
+仓库中的公开配置对应 `famala.cc` 及其生产 D1 数据库和 Turnstile Widget。部署自己的实例时，请使用自己的数据库 ID、Site Key 和主机名。
+
+配置显式关闭了 `workers_dev` 和 `preview_urls`。使用自己的自定义域名时，请替换 `routes` 中的主机名。如果改用 `workers.dev` 地址，请移除自定义域名的 `routes`，将 `workers_dev` 设为 `true`，并在 `TURNSTILE_HOSTNAMES` 和 Turnstile Widget 中允许该主机名。修改配置后重新构建再部署。
+
 ### 使用部署按钮
 
 上方按钮使用[官方 Deploy to Cloudflare 流程](https://developers.cloudflare.com/workers/platform/deploy-buttons/)。
@@ -86,7 +90,7 @@ wrangler.jsonc   Cloudflare Worker、D1 和环境配置
    npx wrangler d1 create famala-db --update-config=false
    ```
 
-2. 在 `wrangler.jsonc` 中，将占位 `database_id` 替换为返回的 UUID；如果使用了其他数据库名称，也更新 `database_name`。保留 `DB` 绑定和 `drizzle` 迁移目录。在 `vars` 中填写上表的三个公开生产变量，并按上文配置 Turnstile Widget。
+2. 在 `wrangler.jsonc` 中，将 `database_id` 设为自己数据库的 UUID；如果使用了其他数据库名称，也更新 `database_name`。保留 `DB` 绑定和 `drizzle` 迁移目录，应用通过 `env.DB` 访问数据库。在 `vars` 中填写上表的三个公开生产变量，并按上文配置 Turnstile Widget。
 3. 保存生产密钥：
 
    ```bash
@@ -103,6 +107,8 @@ wrangler.jsonc   Cloudflare Worker、D1 和环境配置
    `npm run check` 包含构建和部署预演，不发布应用或迁移远程数据。`npm run deploy` 应用远程迁移，迁移失败时停止，成功后发布已有的 Vite 构建产物。如果跳过完整检查，请先执行 `npm run build`，再执行 `npm run deploy`。修改 Wrangler 配置后也需要重新构建。`npm run db:migrate` 仍只更新本地数据库。
 
 后续发布时，更新本地代码并重复第 4 步。只有更换密钥时才需重新上传 Secret。Wrangler 会自动使用 Vite 构建生成的配置，无需额外的部署配置文件或配置生成脚本。
+
+使用自定义域名时，在 Cloudflare 中进入 Worker 的 **Settings → Domains & Routes → Add → Custom Domain** 添加域名。域名所在区域需要已在同一 Cloudflare 账号中生效。`TURNSTILE_HOSTNAMES` 仅用于验证，不会将域名绑定到 Worker；Turnstile Widget 中也要允许该主机名。
 
 环境变量文件只提交 `.env.example`。`.env` 和旧版 `.dev.vars*` 被 Git 忽略，用于本地开发；部署不会将其内容自动上传为生产密钥。不要将真实密钥写入 `vars`、源码或 `VITE_*` 等前端变量。应用的生产验证会拒绝公开测试密钥。
 
