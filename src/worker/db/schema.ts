@@ -64,6 +64,7 @@ export const redemptionCodes = sqliteTable(
   (t) => [
     uniqueIndex('codes_pool_code_unique').on(t.poolId, t.code),
     index('codes_pool_status_idx').on(t.poolId, t.status),
+    index('codes_pool_id_idx').on(t.poolId, t.id),
     check('code_length_check', sql`length(${t.code}) BETWEEN 1 AND 100`),
     check('remark_length_check', sql`${t.remark} IS NULL OR length(${t.remark}) <= 500`),
     check('code_status_check', sql`${t.status} IN ('unclaimed', 'claimed', 'redeemed')`),

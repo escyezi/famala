@@ -17,12 +17,15 @@ async function initializedDatabase() {
 test('one initialization creates the current schema without legacy tables or columns', async () => {
   assert.deepEqual(
     (await readdir('drizzle')).filter((name) => name.endsWith('.sql')),
-    ['0000_initial.sql'],
+    ['0000_initial.sql', '0001_export_cursor_index.sql'],
   );
   const journal = JSON.parse(await readFile('drizzle/meta/_journal.json', 'utf8'));
   assert.deepEqual(
     journal.entries.map(({ idx, tag }) => ({ idx, tag })),
-    [{ idx: 0, tag: '0000_initial' }],
+    [
+      { idx: 0, tag: '0000_initial' },
+      { idx: 1, tag: '0001_export_cursor_index' },
+    ],
   );
   const snapshot = JSON.parse(await readFile('drizzle/meta/0000_snapshot.json', 'utf8'));
   assert.equal(snapshot.prevId, '00000000-0000-0000-0000-000000000000');
@@ -111,6 +114,28 @@ test('initial schema enforces unified states and preserves non-reusable generate
     db.exec("INSERT INTO redemption_codes (pool_id, code, created_at) VALUES (1, 'NEW', 6)");
     assert.ok(db.prepare('SELECT id FROM redemption_codes').get().id > claimed.id);
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+  } finally {
+    db.close();
+  }
+});
+
+test('export index migration preserves data and serves cursor scans', async () => {
+  const db = await initializedDatabase();
+  try {
+    db.exec("INSERT INTO distributor_spaces VALUES (1, 'hash', 1)");
+    db.exec(
+      "INSERT INTO code_pools (id, space_id, name, claim_key, created_at) VALUES (1, 1, 'pool', 'key', 1)",
+    );
+    db.exec("INSERT INTO redemption_codes (pool_id, code, created_at) VALUES (1, '001', 1)");
+    db.exec(await readFile('drizzle/0001_export_cursor_index.sql', 'utf8'));
+    assert.equal(db.prepare('SELECT code FROM redemption_codes').get().code, '001');
+    const plan = db
+      .prepare(
+        'EXPLAIN QUERY PLAN SELECT * FROM redemption_codes WHERE pool_id = 1 AND id > 0 AND id <= 5000 ORDER BY id LIMIT 501',
+      )
+      .all();
+    assert.ok(plan.some((row) => row.detail.includes('codes_pool_id_idx')));
+    assert.ok(plan.every((row) => !row.detail.includes('TEMP B-TREE')));
   } finally {
     db.close();
   }

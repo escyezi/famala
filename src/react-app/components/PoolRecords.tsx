@@ -14,12 +14,14 @@ export function PoolRecords({
   onClearResult,
   onDelete,
   onDeleteMany,
+  onExport,
 }: {
   details: PoolDetails;
   bulkResult: DeleteCodesResult | null;
   onClearResult: () => void;
   onDelete: (row: CodeRow) => void;
   onDeleteMany: (rows: CodeRow[]) => void;
+  onExport: () => void;
 }) {
   const { t } = useTranslation();
   const { message } = useFormat();
@@ -39,6 +41,7 @@ export function PoolRecords({
       <RecordsToolbar
         details={details}
         selectedCount={selectedIds.length}
+        onExport={onExport}
         onFilter={(filter) => {
           if (details.controlsLocked) return;
           onClearResult();

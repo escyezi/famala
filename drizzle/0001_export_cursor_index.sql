@@ -1,0 +1,1 @@
+CREATE INDEX `codes_pool_id_idx` ON `redemption_codes` (`pool_id`,`id`);

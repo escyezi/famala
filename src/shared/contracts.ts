@@ -7,7 +7,10 @@ export interface ClaimRecord {
   claimedAt: number;
 }
 export const MAX_POOLS_PER_SPACE = 50;
+export const MAX_POOL_NAME_LENGTH = 50;
+export const MAX_POOL_DESCRIPTION_LENGTH = 500;
 export const MAX_CODES_PER_POOL = 5000;
+export const EXPORT_BATCH_SIZE = 500;
 export type ImportReason =
   | 'CODE_TOO_LONG'
   | 'CODE_NULL'

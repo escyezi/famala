@@ -3,7 +3,7 @@ import { ApiException, validationError } from './errors.ts';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
-import { and, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, lte, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { codePools, distributorSessions, distributorSpaces, redemptionCodes } from './db/schema.ts';
 import {
@@ -21,6 +21,7 @@ import {
   importFailure,
   MAX_POOLS_PER_SPACE,
   MAX_CODES_PER_POOL,
+  EXPORT_BATCH_SIZE,
 } from '../shared/contracts.ts';
 import type { ClaimRecord } from '../shared/contracts.ts';
 import {
@@ -30,6 +31,8 @@ import {
   importInput,
   deleteCodesInput,
   codesQuery,
+  exportManifestQuery,
+  exportCodesQuery,
   claimKeyInput,
   claimInput,
 } from './validation.ts';
@@ -175,6 +178,60 @@ const routes = app
       .where(eq(distributorSessions.id, c.get('sessionId')));
     clearSession(c);
     return c.json({ ok: true }, 200);
+  })
+  .get('/api/manage/exports/manifest', exportManifestQuery, async (c) => {
+    const { poolId } = c.req.valid('query');
+    const startedAt = Date.now();
+    const pools = await drizzle(c.env.DB)
+      .select({
+        id: codePools.id,
+        name: codePools.name,
+        // Keep the outer table qualified inside the correlated subquery.
+        maxId:
+          sql<number>`coalesce((select max(r.id) from redemption_codes r where r.pool_id = code_pools.id), 0)`.mapWith(
+            Number,
+          ),
+      })
+      .from(codePools)
+      .where(
+        and(
+          eq(codePools.spaceId, c.get('spaceId')),
+          poolId === undefined ? undefined : eq(codePools.id, poolId),
+        ),
+      )
+      .orderBy(asc(codePools.id));
+    if (poolId !== undefined && !pools.length) throw new ApiException(404, 'POOL_NOT_FOUND');
+    return c.json({ startedAt, pools }, 200);
+  })
+  .get('/api/manage/pools/:id/codes/export', exportCodesQuery, async (c) => {
+    const pool = await ownedPool(c);
+    const { afterId, maxId, status } = c.req.valid('query');
+    const rows = await drizzle(c.env.DB)
+      .select({
+        id: redemptionCodes.id,
+        code: redemptionCodes.code,
+        status: redemptionCodes.status,
+        claimedAt: redemptionCodes.claimedAt,
+        remark: redemptionCodes.remark,
+        redeemedMarkedAt: redemptionCodes.redeemedMarkedAt,
+        createdAt: redemptionCodes.createdAt,
+      })
+      .from(redemptionCodes)
+      .where(
+        and(
+          eq(redemptionCodes.poolId, pool.id),
+          gt(redemptionCodes.id, afterId),
+          lte(redemptionCodes.id, maxId),
+          status === 'all' ? undefined : eq(redemptionCodes.status, status),
+        ),
+      )
+      .orderBy(asc(redemptionCodes.id))
+      .limit(EXPORT_BATCH_SIZE + 1);
+    const items = rows.slice(0, EXPORT_BATCH_SIZE);
+    return c.json(
+      { items, nextCursor: rows.length > EXPORT_BATCH_SIZE ? items[items.length - 1].id : null },
+      200,
+    );
   })
   .get('/api/manage/pools', async (c) => {
     const items = await drizzle(c.env.DB)

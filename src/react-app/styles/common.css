@@ -552,3 +552,40 @@
     scroll-behavior: auto !important;
   }
 }
+
+.export-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  margin: var(--space-5) 0;
+}
+.export-fields label {
+  display: grid;
+  justify-content: stretch;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+}
+.export-fields select {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid #dce3dd;
+  border-radius: 8px;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+.export-fields select:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.export-progress {
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border-radius: 8px;
+  background: #f1f6f1;
+  font-size: 13px;
+}
+.export-progress p {
+  margin: var(--space-2) 0 0;
+}

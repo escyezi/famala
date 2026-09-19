@@ -4,7 +4,14 @@ import { toMessage } from '../../shared/messages.ts';
 import type { Message } from '../../shared/messages.ts';
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError, rpc } from '../api.ts';
-import { parseImport, MAX_POOLS_PER_SPACE, MAX_CODES_PER_POOL } from '../../shared/contracts.ts';
+import {
+  parseImport,
+  codePointLength,
+  MAX_POOLS_PER_SPACE,
+  MAX_CODES_PER_POOL,
+  MAX_POOL_NAME_LENGTH,
+  MAX_POOL_DESCRIPTION_LENGTH,
+} from '../../shared/contracts.ts';
 import type {
   CodeRow,
   DeleteCodesResult,
@@ -387,11 +394,16 @@ export function PoolNameDialog({
   const { t } = useTranslation();
   const [name, setName] = useState(pool?.name ?? '');
   const [description, setDescription] = useState(pool?.description ?? '');
+  const nameLength = codePointLength(name.trim());
+  const descriptionLength = codePointLength(description.trim());
+  const nameTooLong = nameLength > MAX_POOL_NAME_LENGTH;
+  const descriptionTooLong = descriptionLength > MAX_POOL_DESCRIPTION_LENGTH;
+  const invalid = !nameLength || nameTooLong || descriptionTooLong;
   const [busy, setBusy] = useState(false);
   const startRequest = useDialogRequest();
   const [error, setError] = useState<Message | null>(null);
   async function save(importNext: boolean) {
-    if (busy || !name.trim()) return;
+    if (busy || invalid) return;
     const request = startRequest();
     if (!request) return;
     setBusy(true);
@@ -435,6 +447,8 @@ export function PoolNameDialog({
         <label htmlFor="pool-name">{t('manage.name')}</label>
         <input
           id="pool-name"
+          aria-invalid={nameTooLong || undefined}
+          aria-describedby="pool-name-help"
           autoFocus
           placeholder={t('manage.nameExample')}
           value={name}
@@ -442,10 +456,17 @@ export function PoolNameDialog({
           required
           disabled={busy}
         />
-        <p className="field-help">{t('manage.nameHelp')}</p>
+        <p id="pool-name-help" className="field-help">
+          {t('manage.nameHelp')}{' '}
+          {t('manage.poolTextLength', { count: nameLength, limit: MAX_POOL_NAME_LENGTH })}
+        </p>
+        {nameTooLong && (
+          <Notice>{{ code: 'POOL_NAME_TOO_LONG', params: { limit: MAX_POOL_NAME_LENGTH } }}</Notice>
+        )}
         <label htmlFor="pool-description">{t('manage.description')}</label>
         <textarea
           id="pool-description"
+          aria-invalid={descriptionTooLong || undefined}
           rows={4}
           placeholder={t('manage.descriptionPlaceholder')}
           value={description}
@@ -454,8 +475,17 @@ export function PoolNameDialog({
           aria-describedby="pool-description-help"
         />
         <p id="pool-description-help" className="field-help">
-          {t('manage.descriptionHelp')}
+          {t('manage.descriptionHelp')}{' '}
+          {t('manage.poolTextLength', {
+            count: descriptionLength,
+            limit: MAX_POOL_DESCRIPTION_LENGTH,
+          })}
         </p>
+        {descriptionTooLong && (
+          <Notice>
+            {{ code: 'POOL_DESCRIPTION_TOO_LONG', params: { limit: MAX_POOL_DESCRIPTION_LENGTH } }}
+          </Notice>
+        )}
         <div className={`dialog-actions${!pool && onImport ? ' create-pool-actions' : ''}`}>
           <button type="button" className="button secondary" disabled={busy} onClick={onClose}>
             {t('common.cancel')}
@@ -464,7 +494,7 @@ export function PoolNameDialog({
             <button
               type="button"
               className="button secondary"
-              disabled={busy || !name.trim()}
+              disabled={busy || invalid}
               onClick={() => void save(false)}
             >
               {t('manage.importLater')}
@@ -474,7 +504,7 @@ export function PoolNameDialog({
             className="button primary"
             disabled={
               busy ||
-              !name.trim() ||
+              invalid ||
               (name.trim() === pool?.name && description.trim() === (pool?.description ?? ''))
             }
           >

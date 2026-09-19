@@ -1,6 +1,44 @@
 import type { zh } from './zh-CN.ts';
 type ResourceShape<T> = { [K in keyof T]: T[K] extends string ? string : ResourceShape<T[K]> };
 export const en = {
+  exports: {
+    allPools: 'Export all pools',
+    singlePool: 'Export records',
+    scopeAll: 'All pools in this workspace, regardless of list filters',
+    scopePool: 'Export all matching records in this pool to CSV, across every page',
+    filter: 'Code status',
+    all: 'All',
+    unclaimed: 'Unclaimed',
+    claimed: 'Claimed',
+    redeemed: 'Redeemed',
+    start: 'Start export',
+    download: 'Download file',
+    reading: 'Reading records…',
+    generating: 'Generating file…',
+    packing: 'Packing files…',
+    done: 'Your file is ready',
+    progress: 'Completed {{completed}} / {{total}} pools; read {{rows}} records',
+    consistency:
+      'Statuses reflect when each batch was read, not a single point-in-time snapshot. Records added after export starts are excluded.',
+    csvHelp:
+      'CSV preserves original values. Opening it directly in Excel may convert numbers or interpret formulas. Import CSV columns as text to preserve values.',
+    zipHelp: 'All pools are exported as separate CSV files in one ZIP, including empty pools.',
+    startedAt: 'Export started (UTC)',
+    endedAt: 'Export ended (UTC)',
+    actualTotal: 'Exported records',
+    filename: 'File name',
+    summary: 'Pool summary',
+    timeHelp:
+      'All times use UTC ISO 8601. Redemption marking time is not the actual redemption time. Redeemed codes may have no claim time.',
+    poolId: 'Pool ID',
+    poolName: 'Pool name',
+    code: 'Code',
+    status: 'Current status',
+    createdAt: 'Imported at (UTC)',
+    claimedAt: 'Claimed at (UTC)',
+    remark: 'Claim remark',
+    redeemedMarkedAt: 'Redemption marked at (UTC)',
+  },
   common: {
     product: 'Redemption code distribution',
     history: 'Claimed codes',
@@ -183,6 +221,7 @@ export const en = {
     descriptionPlaceholder: 'For example: redemption instructions, expiry date, or terms of use',
     descriptionHelp: 'Shown on the claim page. Leave blank to hide it.',
     nameHelp: 'Enter a name that is unique within this workspace.',
+    poolTextLength: '{{count}} / {{limit}} characters (excluding surrounding whitespace).',
     importLater: 'Import later',
     saving: 'Saving…',
     saveName: 'Save changes',
@@ -250,6 +289,10 @@ export const en = {
     eyebrow: 'A LITTLE SOMETHING FOR YOU',
   },
   errors: {
+    INVALID_EXPORT_QUERY: 'Invalid export parameters. Please restart the export.',
+    EXPORT_FAILED: 'Export failed. Please try again.',
+    EXPORT_EMPTY: 'There are no pools to export in this workspace.',
+
     SPACE_POOL_LIMIT:
       'Each workspace holds up to {{limit, number}} pools. Delete an unneeded pool and try again.',
     POOL_CODE_LIMIT:
@@ -277,6 +320,8 @@ export const en = {
     SERVICE_UNAVAILABLE: 'The service is temporarily unavailable. Please try again later.',
     INVALID_JSON: 'The request must contain a valid JSON object.',
     POOL_NAME_REQUIRED: 'Enter a code pool name.',
+    POOL_NAME_TOO_LONG: 'The code pool name must be {{limit}} characters or fewer.',
+    POOL_DESCRIPTION_TOO_LONG: 'The description must be {{limit}} characters or fewer.',
     INVALID_POOL_DESCRIPTION: 'Enter a text description without null characters.',
     POOL_NAME_NULL: 'The code pool name contains an unsupported null character.',
     INVALID_POOL_STATUS: 'Invalid code pool status.',

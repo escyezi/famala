@@ -2,7 +2,12 @@ import { errorBody } from '../shared/messages.ts';
 import { ApiException, validationError } from './errors.ts';
 import type { MiddlewareHandler } from 'hono';
 import { validator } from 'hono/validator';
-import { normalizeRemark } from '../shared/contracts.ts';
+import {
+  normalizeRemark,
+  codePointLength,
+  MAX_POOL_NAME_LENGTH,
+  MAX_POOL_DESCRIPTION_LENGTH,
+} from '../shared/contracts.ts';
 import type { AppEnv } from './types.ts';
 
 function object(value: unknown): Record<string, unknown> {
@@ -34,6 +39,13 @@ export const poolNameInput = validator('json', (value: unknown, c) => {
     (typeof description !== 'string' || description.includes('\0'))
   )
     return c.json(errorBody('INVALID_POOL_DESCRIPTION'), 400);
+  if (codePointLength(name.trim()) > MAX_POOL_NAME_LENGTH)
+    return c.json(errorBody('POOL_NAME_TOO_LONG', { limit: MAX_POOL_NAME_LENGTH }), 400);
+  if (codePointLength(description?.trim() ?? '') > MAX_POOL_DESCRIPTION_LENGTH)
+    return c.json(
+      errorBody('POOL_DESCRIPTION_TOO_LONG', { limit: MAX_POOL_DESCRIPTION_LENGTH }),
+      400,
+    );
   return {
     name: name.trim(),
     ...(description === undefined ? {} : { description: description?.trim() || null }),
@@ -92,6 +104,55 @@ export const claimInput = validator('json', (value: unknown, c) => {
 });
 
 type CodeFilter = 'all' | 'claimed' | 'unclaimed' | 'redeemed';
+
+function exportInteger(values: string[] | undefined, fallback?: number) {
+  if (!values && fallback !== undefined) return fallback;
+  if (
+    !values ||
+    values.length !== 1 ||
+    !/^(0|[1-9]\d*)$/.test(values[0]) ||
+    !Number.isSafeInteger(Number(values[0]))
+  )
+    throw new ApiException(400, 'INVALID_EXPORT_QUERY');
+  return Number(values[0]);
+}
+
+export const exportManifestQuery: MiddlewareHandler<
+  AppEnv,
+  string,
+  {
+    in: { query: { poolId?: string } };
+    out: { query: { poolId?: number } };
+  }
+> = async (c, next) => {
+  const values = c.req.queries('poolId');
+  const poolId = values ? exportInteger(values) : undefined;
+  if (poolId === 0) throw new ApiException(400, 'INVALID_EXPORT_QUERY');
+  c.req.addValidatedData('query', { poolId });
+  await next();
+};
+
+export const exportCodesQuery: MiddlewareHandler<
+  AppEnv,
+  string,
+  {
+    in: { query: { afterId?: string; maxId: string; status?: CodeFilter } };
+    out: { query: { afterId: number; maxId: number; status: CodeFilter } };
+  }
+> = async (c, next) => {
+  const query = c.req.queries();
+  const afterId = exportInteger(query.afterId, 0);
+  const maxId = exportInteger(query.maxId);
+  const status = query.status?.[0] ?? 'all';
+  if (afterId > maxId) throw new ApiException(400, 'INVALID_EXPORT_QUERY');
+  if (
+    (query.status && query.status.length !== 1) ||
+    !['all', 'unclaimed', 'claimed', 'redeemed'].includes(status)
+  )
+    throw new ApiException(400, 'INVALID_FILTER');
+  c.req.addValidatedData('query', { afterId, maxId, status: status as CodeFilter });
+  await next();
+};
 // Hono's default query input allows arbitrary strings/arrays. Narrow the public
 // RPC input to the values this validator actually accepts; keep parsed numbers
 // on the server side only.

@@ -1,0 +1,1 @@
+Keep README content limited to the project overview, development, and deployment; omit business details, and always update the English `README.md` and Chinese `README.zh-CN.md` together to keep their content consistent.

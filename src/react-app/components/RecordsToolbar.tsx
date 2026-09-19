@@ -8,11 +8,13 @@ export function RecordsToolbar({
   selectedCount,
   onDelete,
   onFilter,
+  onExport,
 }: {
   details: PoolDetails;
   selectedCount: number;
   onDelete: () => void;
   onFilter: PoolDetails['changeFilter'];
+  onExport: () => void;
 }) {
   const { t } = useTranslation();
   const { number } = useFormat();
@@ -50,6 +52,14 @@ export function RecordsToolbar({
         ))}
       </div>
       <div className="records-bulk-slot">
+        <button
+          type="button"
+          className="button secondary small"
+          disabled={details.controlsLocked}
+          onClick={onExport}
+        >
+          {t('exports.singlePool')}
+        </button>
         {details.filter === 'unclaimed' && (
           <>
             <span className="muted" aria-live="polite">

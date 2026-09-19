@@ -15,3 +15,7 @@ package-lock.json
 
 # Keep Markdown documents in their original formatting
 **/*.md
+
+# Local browser verification artifacts
+.playwright-cli/
+output/playwright/

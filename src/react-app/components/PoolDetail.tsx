@@ -14,6 +14,7 @@ import {
 } from './PoolDialogs.tsx';
 import { PoolRecords } from './PoolRecords.tsx';
 import { PoolActionsMenu } from './PoolActionsMenu.tsx';
+import { ExportDialog } from './ExportDialog.tsx';
 
 // Manager keys this component by pool ID: drafts, filters and pages belong to one pool.
 export function PoolDetail({
@@ -33,6 +34,7 @@ export function PoolDetail({
   const { t } = useTranslation();
   const [dialog, setDialog] = useState<'rename' | 'import' | 'redeemed' | 'delete' | null>(null);
   const [deletingCode, setDeletingCode] = useState<CodeRow | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [deletingCodes, setDeletingCodes] = useState<CodeRow[] | null>(null);
   const [bulkResult, setBulkResult] = useState<DeleteCodesResult | null>(null);
   const [keyVisible, setKeyVisible] = useState(false);
@@ -144,6 +146,7 @@ export function PoolDetail({
       </section>
       {pool.status === 'stopped' && <Notice kind="info">{t('manage.stoppedNote')}</Notice>}
       <PoolRecords
+        onExport={() => setExporting(true)}
         details={details}
         bulkResult={bulkResult}
         onClearResult={() => setBulkResult(null)}
@@ -151,6 +154,13 @@ export function PoolDetail({
         onDeleteMany={setDeletingCodes}
       />
 
+      {exporting && (
+        <ExportDialog
+          poolId={pool.id}
+          initialStatus={details.filter}
+          onClose={() => setExporting(false)}
+        />
+      )}
       {deletingCodes && (
         <DeleteCodesDialog
           pool={pool}

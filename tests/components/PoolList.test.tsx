@@ -87,3 +87,14 @@ test('行内复制和导入作用于正确码池，名称链接支持普通及�
   await user.click(link);
   expect(actions.onNavigate).toHaveBeenCalledWith(`/manage/pools/${pool.id}`);
 });
+
+test('all-pool export ignores list search and defaults to every code status', async () => {
+  const user = userEvent.setup();
+  render(<PoolList {...props()} />);
+  await user.type(screen.getByRole('searchbox', { name: '搜索码池名称' }), 'no match');
+  await user.click(screen.getByRole('button', { name: '导出全部码池' }));
+  const dialog = screen.getByRole('dialog');
+  expect(within(dialog).getByText(/不受列表筛选影响/)).toBeVisible();
+  expect(within(dialog).getByLabelText('兑换码状态')).toHaveValue('all');
+  expect(within(dialog).getByText(/CSV 保留原文/)).toBeVisible();
+});

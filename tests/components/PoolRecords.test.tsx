@@ -642,3 +642,19 @@ test.each(['import', 'rename', 'single', 'bulk', 'pool'] as const)(
     expect(deleted).not.toHaveBeenCalled();
   },
 );
+
+test('single-pool export starts with the currently displayed filter and includes all pages', async () => {
+  mockApi({
+    [url()]: () => json(page([unclaimed, claimed, redeemed])),
+    [url('redeemed')]: () => json(page([redeemed])),
+  });
+  const user = userEvent.setup();
+  renderDetail();
+  await screen.findByText('AVAILABLE');
+  await user.click(screen.getByRole('button', { name: /^已兑换$/ }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '导出明细' })).toBeEnabled());
+  await user.click(screen.getByRole('button', { name: '导出明细' }));
+  const dialog = screen.getByRole('dialog');
+  expect(within(dialog).getByLabelText('兑换码状态')).toHaveValue('redeemed');
+  expect(within(dialog).getByText(/包含所有分页/)).toBeVisible();
+});

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import type { Pool } from '../../shared/api-types.ts';
 import { CopyButton, Icon, Notice } from './ui.tsx';
 import { ImportDialog, PoolNameDialog } from './PoolDialogs.tsx';
+import { ExportDialog } from './ExportDialog.tsx';
 
 const poolFilters = ['all', 'active', 'pending', 'exhausted', 'stopped'] as const;
 type PoolFilter = (typeof poolFilters)[number];
@@ -29,6 +30,7 @@ export function PoolList({
   const { dateTime, number } = useFormat();
   const { t } = useTranslation();
   const [creating, setCreating] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [importingPool, setImportingPool] = useState<Pick<Pool, 'id' | 'name'> | null>(null);
   const [filter, setFilter] = useState<PoolFilter>('all');
   const [search, setSearch] = useState('');
@@ -61,6 +63,13 @@ export function PoolList({
           <span className="pool-list-count">{pools ? number(pools.length) : '—'}</span>
         </h1>
         <div className="actions">
+          <button
+            className="button secondary"
+            disabled={!pools || !pools.length}
+            onClick={() => setExporting(true)}
+          >
+            {t('exports.allPools')}
+          </button>
           <button
             type="button"
             className="text-button refresh-button"
@@ -236,6 +245,7 @@ export function PoolList({
         </p>
       )}
 
+      {exporting && <ExportDialog onClose={() => setExporting(false)} />}
       {importingPool && (
         <ImportDialog
           pool={importingPool}

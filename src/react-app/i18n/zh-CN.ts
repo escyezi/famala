@@ -1,5 +1,42 @@
 import type { MessageCode } from '../../shared/messages.ts';
 export const zh = {
+  exports: {
+    allPools: '导出全部码池',
+    singlePool: '导出明细',
+    scopeAll: '当前工作空间的全部码池（不受列表筛选影响）',
+    scopePool: '导出当前码池的全部匹配记录为 CSV（包含所有分页）',
+    filter: '兑换码状态',
+    all: '全部',
+    unclaimed: '待领取',
+    claimed: '已领取',
+    redeemed: '已兑换',
+    start: '开始导出',
+    download: '下载文件',
+    reading: '正在读取记录…',
+    generating: '正在生成文件…',
+    packing: '正在打包文件…',
+    done: '文件已准备好',
+    progress: '已完成 {{completed}} / {{total}} 个码池，已读取 {{rows}} 条记录',
+    consistency: '导出采用各批次读取时的状态，不是同一时刻快照。开始后的新增记录不包含在内。',
+    csvHelp:
+      'CSV 保留原文。直接用 Excel 打开可能发生数字转换或公式解释；请将 CSV 按文本列导入以保留原值。',
+    zipHelp: '全部码池按池分别生成 CSV 文件，打包为一个 ZIP。空码池也包含在内。',
+    startedAt: '导出开始时间（UTC）',
+    endedAt: '导出结束时间（UTC）',
+    actualTotal: '实际导出条数',
+    filename: '文件名',
+    summary: '码池汇总',
+    timeHelp:
+      '所有时间均为 UTC ISO 8601。兑换标记时间不代表实际兑换发生时间；已兑换记录可能没有领取时间。',
+    poolId: '码池 ID',
+    poolName: '码池名称',
+    code: '兑换码',
+    status: '当前状态',
+    createdAt: '导入时间（UTC）',
+    claimedAt: '领取时间（UTC）',
+    remark: '领取备注',
+    redeemedMarkedAt: '兑换标记时间（UTC）',
+  },
   common: {
     product: '兑换码发放平台',
     history: '已领取的兑换码',
@@ -174,6 +211,7 @@ export const zh = {
     descriptionPlaceholder: '例如：兑换方式、有效期或使用注意事项',
     descriptionHelp: '将在领码页面展示，留空则不显示。',
     nameHelp: '名称不能为空，也不能与当前空间的其他码池重名。',
+    poolTextLength: '当前 {{count}} / {{limit}} 字（不计首尾空白）。',
     importLater: '稍后导入',
     saving: '保存中…',
     saveName: '保存修改',
@@ -240,6 +278,10 @@ export const zh = {
     eyebrow: 'A LITTLE SOMETHING FOR YOU',
   },
   errors: {
+    INVALID_EXPORT_QUERY: '导出参数无效，请重新开始导出。',
+    EXPORT_FAILED: '导出失败，请重试。',
+    EXPORT_EMPTY: '当前工作空间没有可导出的码池。',
+
     SPACE_POOL_LIMIT: '每个空间最多 {{limit, number}} 个码池，请删除不需要的码池后重试',
     POOL_CODE_LIMIT: '每个码池最多 {{limit, number}} 条兑换码（含已领取、已兑换），容量不足',
     REQUEST_FAILED: '请求失败，请稍后重试',
@@ -263,6 +305,8 @@ export const zh = {
     SERVICE_UNAVAILABLE: '服务暂时不可用，请稍后重试',
     INVALID_JSON: '请求内容不是有效的 JSON 对象',
     POOL_NAME_REQUIRED: '码池名称不能为空',
+    POOL_NAME_TOO_LONG: '码池名称不能超过 {{limit}} 字',
+    POOL_DESCRIPTION_TOO_LONG: '领取说明不能超过 {{limit}} 字',
     INVALID_POOL_DESCRIPTION: '领取说明必须是文本，且不能包含空字符',
     POOL_NAME_NULL: '码池名称包含不支持的空字符',
     INVALID_POOL_STATUS: '无效的码池状态',
@@ -302,6 +346,6 @@ export const zh = {
     WIDGET_UNSUPPORTED: '当前浏览器不支持人机验证，请使用其他浏览器打开',
   },
 } as const satisfies Record<
-  'common' | 'home' | 'auth' | 'manage' | 'claim',
+  'common' | 'home' | 'auth' | 'manage' | 'claim' | 'exports',
   Record<string, string>
 > & { errors: Record<MessageCode, string> };

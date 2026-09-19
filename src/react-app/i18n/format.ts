@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import type { Message } from '../../shared/messages.ts';
+import { MAX_POOL_NAME_LENGTH, MAX_POOL_DESCRIPTION_LENGTH } from '../../shared/contracts.ts';
 import { zh } from './zh-CN.ts';
 
 export function useFormat() {
@@ -36,6 +37,12 @@ export function useFormat() {
       : 'REQUEST_FAILED';
     if (key === 'DUPLICATE_IN_BATCH')
       return t('errors.DUPLICATE_IN_BATCH', { firstLine: value.params?.firstLine ?? '—' });
+    if (key === 'POOL_NAME_TOO_LONG' || key === 'POOL_DESCRIPTION_TOO_LONG')
+      return t(`errors.${key}`, {
+        limit:
+          value.params?.limit ??
+          (key === 'POOL_NAME_TOO_LONG' ? MAX_POOL_NAME_LENGTH : MAX_POOL_DESCRIPTION_LENGTH),
+      });
     return t(`errors.${key}`);
   };
   return { number, dateTime, compactDateTime, message };
