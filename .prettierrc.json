@@ -5,11 +5,5 @@
   "semi": true,
   "printWidth": 100,
   "trailingComma": "all",
-  "endOfLine": "lf",
-  "overrides": [
-    {
-      "files": "wrangler.json",
-      "options": { "parser": "jsonc" }
-    }
-  ]
+  "endOfLine": "lf"
 }

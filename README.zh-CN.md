@@ -18,7 +18,7 @@ npm run dev
 
 如果已有 `.env`，请合并示例配置，不要直接覆盖。从旧版升级时，将 `.dev.vars` 的配置迁移到 `.env` 后移除 `.dev.vars`，否则 Wrangler 会优先使用 `.dev.vars`。访问 <http://127.0.0.1:5173>。`predev` 脚本会自动应用本地 D1 迁移，本地数据保存在 `.wrangler/state/`，重启后仍会保留。
 
-唯一的 `.env.example` 已填入可直接使用的本地配置：开发模式、Turnstile 公开测试密钥和本地主机名。本地 D1 使用 `wrangler.json` 中的占位绑定。服务端验证仍需访问 `challenges.cloudflare.com`。
+唯一的 `.env.example` 已填入可直接使用的本地配置：开发模式、Turnstile 公开测试密钥和本地主机名。本地 D1 使用 `wrangler.jsonc` 中的占位绑定。服务端验证仍需访问 `challenges.cloudflare.com`。
 
 ### 常用命令
 
@@ -26,9 +26,8 @@ npm run dev
 | --- | --- |
 | `npm run dev` | 启动开发服务 |
 | `npm run format` | 格式化项目文件 |
-| `npm run lint` | 运行 TypeScript 和 ESLint 检查 |
+| `npm run lint` | 检查格式、TypeScript 类型和 ESLint 规则 |
 | `npm test` | 运行全部测试 |
-| `npm run test:watch` | 监听修改并重跑测试 |
 | `npm run test:components` | 运行组件测试 |
 | `npm run test:unit` | 运行 API 及其他单元、集成测试 |
 | `npm run build` | 检查类型并构建应用 |
@@ -50,14 +49,14 @@ src/worker/      Hono API 和数据库结构
 src/shared/      共享类型和校验规则
 drizzle/        数据库迁移
 tests/          组件、API 及其他自动化测试
-wrangler.json   Cloudflare Worker、D1 和环境配置
+wrangler.jsonc   Cloudflare Worker、D1 和环境配置
 ```
 
 数据库结构变更通过新增迁移维护，不改写已应用的迁移。前后端通过 Hono RPC 共享接口类型，应一同构建和部署。
 
 ## 部署
 
-部署到 Cloudflare Workers，需要 D1 数据库和 Managed 模式的 Turnstile Widget。部署使用 Wrangler 原生命令。公开配置写入 `wrangler.json` 并提交，生产密钥保存在 Cloudflare。数据库 ID、Site Key 和主机名不是访问凭证。
+部署到 Cloudflare Workers，需要 D1 数据库和 Managed 模式的 Turnstile Widget。部署使用 Wrangler 原生命令。公开配置写入 `wrangler.jsonc` 并提交，生产密钥保存在 Cloudflare。数据库 ID、Site Key 和主机名不是访问凭证。
 
 ### 使用部署按钮
 
@@ -87,7 +86,7 @@ wrangler.json   Cloudflare Worker、D1 和环境配置
    npx wrangler d1 create famala-db --update-config=false
    ```
 
-2. 在 `wrangler.json` 中，将占位 `database_id` 替换为返回的 UUID；如果使用了其他数据库名称，也更新 `database_name`。保留 `DB` 绑定和 `drizzle` 迁移目录。在 `vars` 中填写上表的三个公开生产变量，并按上文配置 Turnstile Widget。
+2. 在 `wrangler.jsonc` 中，将占位 `database_id` 替换为返回的 UUID；如果使用了其他数据库名称，也更新 `database_name`。保留 `DB` 绑定和 `drizzle` 迁移目录。在 `vars` 中填写上表的三个公开生产变量，并按上文配置 Turnstile Widget。
 3. 保存生产密钥：
 
    ```bash

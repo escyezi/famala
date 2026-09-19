@@ -18,7 +18,7 @@ npm run dev
 
 If `.env` already exists, merge the example settings instead of overwriting it. When upgrading from `.dev.vars`, move its values into `.env` and remove `.dev.vars`: Wrangler otherwise gives it precedence over `.env`. Open <http://127.0.0.1:5173>. The `predev` script automatically applies local D1 migrations; local data persists in `.wrangler/state/`.
 
-The single `.env.example` contains ready-to-use local values: development mode, public Turnstile test credentials, and loopback hostnames. Local D1 uses the placeholder binding in `wrangler.json`. Server-side verification still requires network access to `challenges.cloudflare.com`.
+The single `.env.example` contains ready-to-use local values: development mode, public Turnstile test credentials, and loopback hostnames. Local D1 uses the placeholder binding in `wrangler.jsonc`. Server-side verification still requires network access to `challenges.cloudflare.com`.
 
 ### Commands
 
@@ -26,9 +26,8 @@ The single `.env.example` contains ready-to-use local values: development mode, 
 | --- | --- |
 | `npm run dev` | Start the development server |
 | `npm run format` | Format project files |
-| `npm run lint` | Run TypeScript and ESLint checks |
+| `npm run lint` | Check formatting, TypeScript types, and ESLint rules |
 | `npm test` | Run all tests |
-| `npm run test:watch` | Run tests in watch mode |
 | `npm run test:components` | Run component tests |
 | `npm run test:unit` | Run API and other unit/integration tests |
 | `npm run build` | Type-check and build the application |
@@ -50,14 +49,14 @@ src/worker/      Hono API and database schema
 src/shared/      Shared types and validation rules
 drizzle/        Database migrations
 tests/          Component, API, and other automated tests
-wrangler.json   Cloudflare Worker, D1, and environment configuration
+wrangler.jsonc   Cloudflare Worker, D1, and environment configuration
 ```
 
 Add schema changes as new migrations; do not rewrite migrations that have already been applied. Frontend and API types are shared through Hono RPC, so build and deploy them together.
 
 ## Deployment
 
-Deploy to Cloudflare Workers with a D1 database and a Managed Turnstile widget. Deployment uses native Wrangler commands. Commit public configuration in `wrangler.json`; keep production secrets in Cloudflare. Database IDs, site keys, and hostnames are not access credentials.
+Deploy to Cloudflare Workers with a D1 database and a Managed Turnstile widget. Deployment uses native Wrangler commands. Commit public configuration in `wrangler.jsonc`; keep production secrets in Cloudflare. Database IDs, site keys, and hostnames are not access credentials.
 
 ### Deploy with the button
 
@@ -87,7 +86,7 @@ The button handles D1 provisioning; the Turnstile widget must be configured sepa
    npx wrangler d1 create famala-db --update-config=false
    ```
 
-2. In `wrangler.json`, replace the placeholder `database_id` with the returned UUID and set `database_name` if you chose a different name. Keep the `DB` binding and `drizzle` migration directory. Set the three public production variables from the table in `vars`; create the Turnstile widget as described above.
+2. In `wrangler.jsonc`, replace the placeholder `database_id` with the returned UUID and set `database_name` if you chose a different name. Keep the `DB` binding and `drizzle` migration directory. Set the three public production variables from the table in `vars`; create the Turnstile widget as described above.
 3. Store the production secret:
 
    ```bash
