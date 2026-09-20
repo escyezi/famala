@@ -138,6 +138,43 @@ test('mutation requests reject cross-site origins, malformed bodies and non-JSON
   assert.equal(malformed.status, 400);
 });
 
+test.each([undefined, 'chunked'])(
+  'streamed oversized requests reject before space creation (transfer encoding: %s)',
+  async (transferEncoding) => {
+    const before = await env.DB.prepare(
+      'SELECT (SELECT count(*) FROM distributor_spaces) AS spaces, (SELECT count(*) FROM distributor_sessions) AS sessions',
+    ).first();
+    const bytes = new TextEncoder().encode(' '.repeat(1024 * 1024 - 1) + '{}');
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(bytes.subarray(0, 512 * 1024));
+        controller.enqueue(bytes.subarray(512 * 1024));
+        controller.close();
+      },
+    });
+    const streamed = new Request('https://famala.example/api/spaces', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(transferEncoding ? { 'Transfer-Encoding': transferEncoding } : {}),
+      },
+      body,
+      duplex: 'half',
+    });
+    assert.equal(streamed.headers.has('Content-Length'), false);
+    const response = await app.request(streamed, undefined, env);
+    assert.equal(response.status, 413);
+    assert.deepEqual(await response.json(), { code: 'BODY_TOO_LARGE' });
+    assert.equal(response.headers.get('set-cookie'), null);
+    assert.deepEqual(
+      await env.DB.prepare(
+        'SELECT (SELECT count(*) FROM distributor_spaces) AS spaces, (SELECT count(*) FROM distributor_sessions) AS sessions',
+      ).first(),
+      before,
+    );
+  },
+);
+
 test('Hono RPC client interoperates with actual routes, JSON validators and query parsing', async () => {
   const client = hc('https://famala.example', {
     fetch: (input, init) => app.request(input, init, env),

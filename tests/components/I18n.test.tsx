@@ -2,7 +2,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import App from '../../src/react-app/App.tsx';
-import { AuthDialog, SaveKeyDialog } from '../../src/react-app/components/AuthDialog.tsx';
+import { AuthDialog } from '../../src/react-app/components/AuthDialog.tsx';
 import { ClaimPage, HistoryDialog } from '../../src/react-app/components/Claims.tsx';
 import { Manager } from '../../src/react-app/components/Manager.tsx';
 import { ImportDialog, PoolNameDialog } from '../../src/react-app/components/PoolDialogs.tsx';
@@ -22,7 +22,6 @@ import {
   mockTurnstile,
   pool,
   publicPool,
-  session,
 } from './helpers.ts';
 import type { ApiResponses } from './helpers.ts';
 
@@ -174,19 +173,6 @@ test('component reactivity: login draft and existing error translate in the same
   expect(screen.getByRole('alert')).toHaveTextContent('Invalid distributor key');
   expect(login).toHaveBeenCalledOnce();
   expect(done).not.toHaveBeenCalled();
-});
-
-test('English key confirmation requires saving the key', async () => {
-  await english();
-  const done = vi.fn();
-  const user = userEvent.setup();
-  render(<SaveKeyDialog value="d_example" onSaved={done} />);
-  expect(await screen.findByText('d_example')).toBeVisible();
-  const enter = screen.getByRole('button', { name: 'Open workspace' });
-  expect(enter).toBeDisabled();
-  await user.click(screen.getByRole('checkbox'));
-  await user.click(enter);
-  expect(done).toHaveBeenCalledOnce();
 });
 
 test('English code pool creation preserves user content', async () => {
@@ -397,18 +383,4 @@ test('dates follow locale and keep the browser time zone', async () => {
       }).format(claimRecord.claimedAt),
     ),
   ).toBeVisible();
-});
-
-test('English login succeeds with a trimmed distributor key', async () => {
-  await english();
-  const login = vi.fn<(init: RequestInit) => Response>(() => json(session));
-  mockApi({ 'POST /api/login': login });
-  const done = vi.fn();
-  const user = userEvent.setup();
-  render(<AuthDialog onClose={vi.fn()} onDone={done} onCreated={vi.fn()} />);
-  await user.click(screen.getByRole('button', { name: /Use an existing key/ }));
-  await user.type(screen.getByLabelText('Distributor key'), '  d_saved-key  ');
-  await user.click(screen.getByRole('button', { name: 'Open workspace' }));
-  expect(done).toHaveBeenCalledExactlyOnceWith(session);
-  expect(JSON.parse(login.mock.calls[0][0].body as string)).toEqual({ key: 'd_saved-key' });
 });

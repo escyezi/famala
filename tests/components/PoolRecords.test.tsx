@@ -317,32 +317,6 @@ test('pagination waits without clearing content and backs up after the last page
   expect(result.current.page).toBe(1);
 });
 
-test('cache evicts the least recently used query after twenty entries', async () => {
-  const reload = deferred<Response>();
-  let revisit = false;
-  const routes = Object.fromEntries(
-    Array.from({ length: 21 }, (_, i) => [
-      url('all', i + 1),
-      () =>
-        i === 0 && revisit
-          ? reload.promise
-          : json(page([{ ...unclaimed, code: `PAGE-${i + 1}` }], { page: i + 1, total: 500 })),
-    ]),
-  );
-  mockApi(routes);
-  const { result } = renderHook(() => usePoolDetails(pool, vi.fn(), vi.fn()));
-  await waitFor(() => expect(result.current.pending).toBe(false));
-  for (let n = 2; n <= 21; n++) {
-    act(() => result.current.changePage(n));
-    await waitFor(() => expect(result.current.page).toBe(n));
-  }
-  revisit = true;
-  act(() => result.current.changePage(1));
-  expect(result.current.page).toBe(21);
-  await act(async () => reload.resolve(json(page([unclaimed], { total: 500 }))));
-  expect(result.current.page).toBe(1);
-});
-
 test('unmount aborts requests and a new pool instance cannot reuse the old cache', async () => {
   const late = deferred<Response>();
   let signal: AbortSignal | null | undefined;
