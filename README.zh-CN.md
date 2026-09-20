@@ -33,7 +33,7 @@ npm run dev
 | `npm run test:components` | 运行组件测试 |
 | `npm run test:unit` | 运行 API 及其他单元、集成测试 |
 | `npm run build` | 检查类型并构建应用 |
-| `npm run deploy` | 应用远程 D1 迁移并发布已有构建产物（首次升级需遵循下方流程） |
+| `npm run deploy` | 应用远程 D1 迁移并发布已有构建产物 |
 | `npm run deploy:maintenance` | 使用已有前端构建发布临时 API 维护入口 |
 | `npm run preview` | 构建并在本地预览 |
 | `npm run check` | 检查格式、类型、代码、测试、构建及部署预演 |
@@ -113,38 +113,10 @@ wrangler.jsonc   Cloudflare Worker、D1 和环境配置
 
    `npm run check` 包含构建和部署预演，不发布应用或迁移远程数据。`npm run deploy` 应用远程迁移，迁移失败时停止，成功后发布已有的 Vite 构建产物。如果跳过完整检查，请先执行 `npm run build`，再执行 `npm run deploy`。修改 Wrangler 配置后也需要重新构建。`npm run db:migrate` 仍只更新本地数据库。
 
-现有实例从 `0002_pool_counters` 之前的版本升级时，应使用下方维护流程代替第 4 步。此后的发布可更新本地代码并重复第 4 步。只有更换密钥时才需重新上传 Secret。Wrangler 会自动使用 Vite 构建生成的配置，无需额外的部署配置文件或配置生成脚本。
+后续发布可更新本地代码并重复第 4 步。只有更换密钥时才需重新上传 Secret。Wrangler 会自动使用 Vite 构建生成的配置，无需额外的部署配置文件或配置生成脚本。
 
 使用自定义域名时，在 Cloudflare 中进入 Worker 的 **Settings → Domains & Routes → Add → Custom Domain** 添加域名。域名所在区域需要已在同一 Cloudflare 账号中生效。`TURNSTILE_HOSTNAMES` 仅用于验证，不会将域名绑定到 Worker；Turnstile Widget 中也要允许该主机名。
 
 环境变量文件只提交 `.env.example`。`.env` 和旧版 `.dev.vars*` 被 Git 忽略，用于本地开发；部署不会将其内容自动上传为生产密钥。不要将真实密钥写入 `vars`、源码或 `VITE_*` 等前端变量。应用的生产验证会拒绝公开测试密钥。
 
 使用 HTTPS，并验证线上应用和 Turnstile 配置。当前每批 500 条的导出性能仍需在独立 Cloudflare 测试部署上验证：使用满量数据，测量 Worker CPU（目标 P95 < 8 ms）、D1 `rows_read`、资源超限错误及移动设备内存占用。如果不达标，将 `EXPORT_BATCH_SIZE` 降至 200，更新分页测试，并在生产发布前重新验证。
-
-
-### 首次升级到应用维护计数
-
-全新安装可使用正常部署流程。现有实例必须安排维护窗口，因为旧版 Worker 不会更新新增计数。本次升级期间关闭自动部署，防止绕过维护流程。先构建和验证，再发布维护入口：
-
-```bash
-npm run check
-npm run deploy:maintenance
-```
-
-该命令按 `wrangler.jsonc` 发布到相同 Worker 和路由，使用 `dist/client` 提供静态资源，不应用数据库迁移。确认 `/api/config` 及其他所有 API 入口返回 503，停止外部写入，并通过 Workers 日志确认旧版本在途请求均已完成。发布维护版本不会取消在途请求。之后再执行：
-
-```bash
-npm run db:migrate:remote
-npm run db:counters:check -- --remote
-npx wrangler deploy
-```
-
-仅在上一步成功后执行下一步。迁移 `0002_pool_counters` 使用一次分组聚合回填全部计数。如果迁移或校验失败，保持维护状态，不发布应用。需要修复计数时，在全部写入仍已暂停的前提下执行：
-
-```bash
-npm run db:counters:rebuild -- --remote --writes-paused
-```
-
-重建命令会随后执行校验，不一致时以非零状态退出。`--writes-paused` 表示已满足操作前提，不会自动暂停请求。确认新应用运行正常后，再恢复外部写入和自动部署。
-
-回滚同样需要维护窗口。旧版本一旦恢复写入，计数便会过期；再次部署使用计数的版本前，必须暂停写入并重建、校验计数。不要用普通的迁移加部署命令跳过首次升级流程。

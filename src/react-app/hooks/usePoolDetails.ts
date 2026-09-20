@@ -3,6 +3,7 @@ import type { Message } from '../../shared/messages.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CodeFilter, CodePage, CodePageSize, Pool } from '../../shared/api-types.ts';
 import { api, rpc } from '../api.ts';
+import type { CommitPoolStatus } from './usePools.ts';
 
 export type RecordsQuery = { page: number; filter: CodeFilter; pageSize: CodePageSize };
 type Snapshot = { query: RecordsQuery; data: CodePage };
@@ -21,7 +22,11 @@ const queryKey = (query: RecordsQuery) => `${query.filter}:${query.page}:${query
 const CACHE_TTL = 60_000;
 const CACHE_LIMIT = 20;
 
-export function usePoolDetails(pool: Pool, onRefresh: () => void) {
+export function usePoolDetails(
+  pool: Pool,
+  onRefresh: () => void,
+  onStatusCommitted: CommitPoolStatus,
+) {
   const [state, setState] = useState<RecordsState>({
     displayedSnapshot: null,
     requestedQuery: initialQuery,
@@ -201,7 +206,7 @@ export function usePoolDetails(pool: Pool, onRefresh: () => void) {
     setError(null);
     setState((current) => ({ ...current, selectionRevision: current.selectionRevision + 1 }));
     try {
-      await api(
+      const updated = await api(
         rpc.api.manage.pools[':id'].status.$post(
           {
             param: { id: String(pool.id) },
@@ -210,7 +215,10 @@ export function usePoolDetails(pool: Pool, onRefresh: () => void) {
           { init: { signal: controller.signal } },
         ),
       );
-      if (isCurrent()) refreshAfterMutation();
+      if (isCurrent()) {
+        onStatusCommitted(pool.id, updated.status);
+        refreshAfterMutation();
+      }
     } catch (error) {
       if (isCurrent()) setError(toMessage(error));
     } finally {

@@ -111,6 +111,7 @@ test('redeemed import invalidates selection and cached inventory; failed refresh
       pool={pool}
       error={null}
       onRefresh={refreshed}
+      onStatusCommitted={vi.fn()}
       onNavigate={vi.fn()}
       onDeleted={vi.fn()}
     />,

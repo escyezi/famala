@@ -12,7 +12,7 @@ export function Manager({
   onNavigate: (path: string) => void;
 }) {
   const { t } = useTranslation();
-  const { pools, loading, error, refresh, removePool } = usePools(poolId);
+  const { pools, loading, error, refresh, removePool, commitPoolStatus } = usePools(poolId);
   const pool = pools?.find((item) => String(item.id) === poolId);
   return (
     <div className="workspace">
@@ -27,6 +27,7 @@ export function Manager({
             pool={pool}
             error={error}
             onRefresh={refresh}
+            onStatusCommitted={commitPoolStatus}
             onNavigate={onNavigate}
             onDeleted={() => {
               removePool(pool.id);

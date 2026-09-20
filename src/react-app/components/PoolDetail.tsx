@@ -4,6 +4,7 @@ import type { Message } from '../../shared/messages.ts';
 import { useId, useState } from 'react';
 import type { CodeRow, DeleteCodesResult, Pool } from '../../shared/api-types.ts';
 import { usePoolDetails } from '../hooks/usePoolDetails.ts';
+import type { CommitPoolStatus } from '../hooks/usePools.ts';
 import { CopyButton, Icon, Notice } from './ui.tsx';
 import {
   DeleteCodeDialog,
@@ -21,12 +22,14 @@ export function PoolDetail({
   pool,
   error: poolsError,
   onRefresh,
+  onStatusCommitted,
   onNavigate,
   onDeleted,
 }: {
   pool: Pool;
   error: Message | null;
   onRefresh: () => void;
+  onStatusCommitted: CommitPoolStatus;
   onNavigate: (path: string) => void;
   onDeleted: () => void;
 }) {
@@ -39,7 +42,7 @@ export function PoolDetail({
   const [bulkResult, setBulkResult] = useState<DeleteCodesResult | null>(null);
   const [keyVisible, setKeyVisible] = useState(false);
   const keyPanelId = useId();
-  const details = usePoolDetails(pool, onRefresh);
+  const details = usePoolDetails(pool, onRefresh, onStatusCommitted);
   const { codes, imported, status, controlsLocked, error } = details;
   const total = codes?.counts.all ?? pool.total;
   const remaining = codes?.counts.unclaimed ?? pool.remaining;
@@ -199,7 +202,12 @@ export function PoolDetail({
         />
       )}
       {dialog === 'import' && (
-        <ImportDialog pool={pool} onClose={() => setDialog(null)} onImported={imported} />
+        <ImportDialog
+          pool={pool}
+          onClose={() => setDialog(null)}
+          onImported={imported}
+          onPartialFailure={details.refreshAfterMutation}
+        />
       )}
       {dialog === 'redeemed' && (
         <ImportDialog

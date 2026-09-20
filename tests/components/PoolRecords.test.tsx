@@ -55,6 +55,7 @@ const renderDetail = () =>
       pool={pool}
       error={null}
       onRefresh={vi.fn()}
+      onStatusCommitted={vi.fn()}
       onNavigate={vi.fn()}
       onDeleted={vi.fn()}
     />,
@@ -156,7 +157,7 @@ test('refresh synchronously ignores every competing user entry, including duplic
     .mockImplementationOnce(() => pending.promise);
   const onRefresh = vi.fn();
   const fetch = mockApi({ [url()]: load });
-  const { result } = renderHook(() => usePoolDetails(pool, onRefresh));
+  const { result } = renderHook(() => usePoolDetails(pool, onRefresh, vi.fn()));
   await waitFor(() => expect(result.current.controlsLocked).toBe(false));
   act(() => {
     result.current.refresh();
@@ -185,7 +186,7 @@ test('expired cache waits for fresh data instead of committing expired results',
     .mockImplementationOnce(() => json(page([unclaimed])))
     .mockImplementationOnce(() => fresh.promise);
   mockApi({ [url()]: load, [url('claimed')]: () => json(page([claimed])) });
-  const { result } = renderHook(() => usePoolDetails(pool, vi.fn()));
+  const { result } = renderHook(() => usePoolDetails(pool, vi.fn(), vi.fn()));
   await waitFor(() => expect(result.current.pending).toBe(false));
   act(() => result.current.changeFilter('claimed'));
   await waitFor(() => expect(result.current.filter).toBe('claimed'));
@@ -205,7 +206,7 @@ test('invalidation prevents stale requests and caches from restoring outdated ro
     .mockImplementationOnce(() => json({ code: 'SERVICE_UNAVAILABLE' }, 503))
     .mockImplementationOnce(() => json(page([])));
   mockApi({ [url()]: all, [url('claimed')]: () => stale.promise });
-  const { result } = renderHook(() => usePoolDetails(pool, vi.fn()));
+  const { result } = renderHook(() => usePoolDetails(pool, vi.fn(), vi.fn()));
   await waitFor(() => expect(result.current.pending).toBe(false));
   act(() => result.current.changeFilter('claimed'));
   act(() => result.current.refreshAfterMutation());
@@ -302,7 +303,7 @@ test('pagination waits without clearing content and backs up after the last page
     [url()]: () => json(page([unclaimed], { total: deleted ? 20 : 21 })),
     [url('all', 2)]: () => (deleted ? json(page([], { page: 2, total: 20 })) : second.promise),
   });
-  const { result } = renderHook(() => usePoolDetails(pool, vi.fn()));
+  const { result } = renderHook(() => usePoolDetails(pool, vi.fn(), vi.fn()));
   await waitFor(() => expect(result.current.pending).toBe(false));
   act(() => result.current.changePage(2));
   expect(result.current.page).toBe(1);
@@ -316,7 +317,7 @@ test('pagination waits without clearing content and backs up after the last page
   expect(result.current.page).toBe(1);
 });
 
-test('cache evicts the least recently redeemed query after twenty entries', async () => {
+test('cache evicts the least recently used query after twenty entries', async () => {
   const reload = deferred<Response>();
   let revisit = false;
   const routes = Object.fromEntries(
@@ -329,7 +330,7 @@ test('cache evicts the least recently redeemed query after twenty entries', asyn
     ]),
   );
   mockApi(routes);
-  const { result } = renderHook(() => usePoolDetails(pool, vi.fn()));
+  const { result } = renderHook(() => usePoolDetails(pool, vi.fn(), vi.fn()));
   await waitFor(() => expect(result.current.pending).toBe(false));
   for (let n = 2; n <= 21; n++) {
     act(() => result.current.changePage(n));
@@ -356,12 +357,12 @@ test('unmount aborts requests and a new pool instance cannot reuse the old cache
       return late.promise;
     },
   });
-  const first = renderHook(() => usePoolDetails(pool, vi.fn()));
+  const first = renderHook(() => usePoolDetails(pool, vi.fn(), vi.fn()));
   await waitFor(() => expect(first.result.current.pending).toBe(false));
   act(() => first.result.current.changeFilter('claimed'));
   first.unmount();
   expect(signal?.aborted).toBe(true);
-  const second = renderHook(() => usePoolDetails(pool, vi.fn()));
+  const second = renderHook(() => usePoolDetails(pool, vi.fn(), vi.fn()));
   expect(second.result.current.codes).toBeNull();
   await waitFor(() => expect(second.result.current.codes?.items[0].code).toBe('USED'));
   await act(async () => late.resolve(json(page([claimed]))));
@@ -438,8 +439,9 @@ test.each([200, 503])(
       .mockImplementationOnce(() => read.promise);
     const mutate = vi.fn(() => write.promise);
     const parent = vi.fn();
+    const committed = vi.fn();
     mockApi({ [url()]: load, 'POST /api/manage/pools/1/status': mutate });
-    const { result } = renderHook(() => usePoolDetails(pool, parent));
+    const { result } = renderHook(() => usePoolDetails(pool, parent, committed));
     await waitFor(() => expect(result.current.controlsLocked).toBe(false));
     act(() => {
       void result.current.status();
@@ -451,6 +453,8 @@ test.each([200, 503])(
     expect(result.current.controlsLocked).toBe(true);
     await act(async () => write.resolve(json({ status: 'stopped' })));
     expect(parent).toHaveBeenCalledTimes(1);
+    expect(committed).toHaveBeenCalledExactlyOnceWith(pool.id, 'stopped');
+    expect(committed.mock.invocationCallOrder[0]).toBeLessThan(parent.mock.invocationCallOrder[0]);
     expect(result.current.busy).toBe(false);
     expect(result.current.controlsLocked).toBe(true);
     act(() => {
@@ -471,18 +475,20 @@ test.each([200, 503])(
 
 test('failed status unlocks without invalidating the snapshot or refreshing', async () => {
   const parent = vi.fn();
+  const committed = vi.fn();
   const read = vi.fn(() => json(page([unclaimed])));
   mockApi({
     [url()]: read,
     'POST /api/manage/pools/1/status': () => json({ code: 'SERVICE_UNAVAILABLE' }, 503),
   });
-  const { result } = renderHook(() => usePoolDetails(pool, parent));
+  const { result } = renderHook(() => usePoolDetails(pool, parent, committed));
   await waitFor(() => expect(result.current.controlsLocked).toBe(false));
   await act(async () => result.current.status());
   expect(result.current.error).not.toBeNull();
   expect(result.current.controlsLocked).toBe(false);
   expect(result.current.actionsDisabled).toBe(false);
   expect(parent).not.toHaveBeenCalled();
+  expect(committed).not.toHaveBeenCalled();
   expect(read).toHaveBeenCalledTimes(1);
 });
 
@@ -492,6 +498,7 @@ test.each([200, 503, 401])(
     const pending = deferred<Response>();
     let signal: AbortSignal | null | undefined;
     const parent = vi.fn();
+    const committed = vi.fn();
     const unauthorized = vi.fn();
     window.addEventListener('famala:unauthorized', unauthorized);
     const fetch = mockApi({
@@ -501,7 +508,7 @@ test.each([200, 503, 401])(
         return pending.promise;
       },
     });
-    const { result, unmount } = renderHook(() => usePoolDetails(pool, parent));
+    const { result, unmount } = renderHook(() => usePoolDetails(pool, parent, committed));
     await waitFor(() => expect(result.current.controlsLocked).toBe(false));
     act(() => {
       void result.current.status();
@@ -515,17 +522,18 @@ test.each([200, 503, 401])(
     );
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(parent).not.toHaveBeenCalled();
+    expect(committed).not.toHaveBeenCalled();
     expect(unauthorized).not.toHaveBeenCalled();
     window.removeEventListener('famala:unauthorized', unauthorized);
   },
 );
 
 test('retained refresh and import callbacks use the latest committed filter and page', async () => {
-  const unusedPage2 = vi.fn(() => json(page([claimed], { page: 2, total: 21 })));
-  const unusedPage1 = vi.fn(() => json(page([claimed], { total: 21 })));
+  const claimedPage2 = vi.fn(() => json(page([claimed], { page: 2, total: 21 })));
+  const claimedPage1 = vi.fn(() => json(page([claimed], { total: 21 })));
   const all = vi.fn(() => json(page([unclaimed])));
-  mockApi({ [url()]: all, [url('claimed')]: unusedPage1, [url('claimed', 2)]: unusedPage2 });
-  const { result } = renderHook(() => usePoolDetails(pool, vi.fn()));
+  mockApi({ [url()]: all, [url('claimed')]: claimedPage1, [url('claimed', 2)]: claimedPage2 });
+  const { result } = renderHook(() => usePoolDetails(pool, vi.fn(), vi.fn()));
   await waitFor(() => expect(result.current.controlsLocked).toBe(false));
   const refresh = result.current.refresh;
   const imported = result.current.imported;
@@ -537,13 +545,13 @@ test('retained refresh and import callbacks use the latest committed filter and 
   await waitFor(() => expect(result.current.controlsLocked).toBe(false));
   expect(result.current.filter).toBe('claimed');
   expect(result.current.page).toBe(2);
-  expect(unusedPage2).toHaveBeenCalledTimes(2);
+  expect(claimedPage2).toHaveBeenCalledTimes(2);
   act(() => imported());
   await waitFor(() => expect(result.current.controlsLocked).toBe(false));
   expect(result.current.filter).toBe('claimed');
   expect(result.current.page).toBe(1);
   expect(all).toHaveBeenCalledTimes(1);
-  expect(unusedPage1).toHaveBeenCalledTimes(2);
+  expect(claimedPage1).toHaveBeenCalledTimes(2);
 });
 
 test('StrictMode cleanup does not let old read completion unlock the new lifecycle', async () => {
@@ -558,7 +566,9 @@ test('StrictMode cleanup does not let old read completion unlock the new lifecyc
     })
     .mockImplementationOnce(() => fresh.promise);
   mockApi({ [url()]: load });
-  const { result } = renderHook(() => usePoolDetails(pool, vi.fn()), { wrapper: StrictMode });
+  const { result } = renderHook(() => usePoolDetails(pool, vi.fn(), vi.fn()), {
+    wrapper: StrictMode,
+  });
   expect(load).toHaveBeenCalledTimes(2);
   expect(signal?.aborted).toBe(true);
   await act(async () => old.resolve(json(page([claimed]))));
@@ -597,6 +607,7 @@ test.each(['import', 'rename', 'single', 'bulk', 'pool'] as const)(
         pool={pool}
         error={null}
         onRefresh={parent}
+        onStatusCommitted={vi.fn()}
         onNavigate={navigate}
         onDeleted={deleted}
       />,

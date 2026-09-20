@@ -251,6 +251,7 @@ export function PoolList({
           pool={importingPool}
           onClose={() => setImportingPool(null)}
           onImported={onRefresh}
+          onPartialFailure={onRefresh}
         />
       )}
       {creating && (

@@ -241,11 +241,13 @@ export function ImportDialog({
   pool,
   onClose,
   onImported,
+  onPartialFailure,
   mode = 'codes',
 }: {
   pool: Pick<Pool, 'id' | 'name'>;
   onClose: () => void;
   onImported: () => void;
+  onPartialFailure?: () => void;
   mode?: 'codes' | 'redeemed';
 }) {
   const { number, message } = useFormat();
@@ -280,7 +282,18 @@ export function ImportDialog({
       setResult(result);
       onImported();
     } catch (e) {
-      if (request.isCurrent()) setError(toMessage(e));
+      if (!request.isCurrent()) return;
+      setError(toMessage(e));
+      // Earlier import batches may have committed before a server failure.
+      // Network errors and invalid responses do not establish an HTTP 5xx.
+      if (
+        mode === 'codes' &&
+        e instanceof ApiError &&
+        e.status >= 500 &&
+        e.status < 600 &&
+        e.code !== 'INVALID_RESPONSE'
+      )
+        onPartialFailure?.();
     } finally {
       if (request.isCurrent()) setBusy(false);
       request.finish();

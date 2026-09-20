@@ -310,7 +310,7 @@ test('按每页条数翻页，切换条数或使用状态筛选回到第一页',
       json({
         counts: { all: 1, unclaimed: 1, claimed: 0, redeemed: 0 },
         summary: { total: 1, remaining: 1, claimed: 0 + 0, redeemed: 0 },
-        items: [{ ...row, code: 'UNUSED-CODE', status: 'claimed', claimedAt: pool.createdAt }],
+        items: [{ ...row, code: 'CLAIMED-CODE', status: 'claimed', claimedAt: pool.createdAt }],
         total: 1,
         page: 1,
         pageSize: 50,
@@ -333,7 +333,7 @@ test('按每页条数翻页，切换条数或使用状态筛选回到第一页',
   expect(await screen.findByText('LAST-PAGE')).toBeVisible();
   expect(screen.getByRole('button', { name: '下一页' })).toBeDisabled();
   await user.click(screen.getByRole('button', { name: '已领取' }));
-  expect(await screen.findByText('UNUSED-CODE')).toBeVisible();
+  expect(await screen.findByText('CLAIMED-CODE')).toBeVisible();
   expect(screen.queryByText('LAST-PAGE')).not.toBeInTheDocument();
   expect(screen.getByRole('combobox', { name: '每页条数' })).toHaveValue('50');
   expect(screen.getByRole('button', { name: '上一页' })).toBeDisabled();
@@ -426,23 +426,23 @@ const unclaimedCode: ApiResponses['codes']['items'][number] = {
   redeemedMarkedAt: null,
   createdAt: pool.createdAt,
 };
-const unusedCode = {
+const claimedCode = {
   ...unclaimedCode,
   id: 2,
-  code: 'UNUSED-CODE',
+  code: 'CLAIMED-CODE',
   status: 'claimed' as const,
   claimedAt: pool.createdAt,
 };
-const usedCode = {
-  ...unusedCode,
+const redeemedCode = {
+  ...claimedCode,
   id: 3,
-  code: 'USED-CODE',
+  code: 'REDEEMED-CODE',
   status: 'redeemed' as const,
   redeemedMarkedAt: pool.createdAt + 3_600_000,
 };
 
-test('明细显示三种状态和使用时间，仅待领取可删除，三种筛选请求各自状态', async () => {
-  const codeRows = [unclaimedCode, unusedCode, usedCode];
+test('明细显示三种状态和兑换标记时间，仅待领取可删除，三种筛选请求各自状态', async () => {
+  const codeRows = [unclaimedCode, claimedCode, redeemedCode];
   const page = (items: typeof codeRows) =>
     json({
       counts: { all: 3, unclaimed: 1, claimed: 1, redeemed: 1 },
@@ -457,16 +457,16 @@ test('明细显示三种状态和使用时间，仅待领取可删除，三种�
     'GET /api/manage/pools/1/codes?page=1&status=all&pageSize=20': () => page(codeRows),
     'GET /api/manage/pools/1/codes?page=1&status=unclaimed&pageSize=20': () =>
       page([unclaimedCode]),
-    'GET /api/manage/pools/1/codes?page=1&status=claimed&pageSize=20': () => page([unusedCode]),
-    'GET /api/manage/pools/1/codes?page=1&status=redeemed&pageSize=20': () => page([usedCode]),
+    'GET /api/manage/pools/1/codes?page=1&status=claimed&pageSize=20': () => page([claimedCode]),
+    'GET /api/manage/pools/1/codes?page=1&status=redeemed&pageSize=20': () => page([redeemedCode]),
   });
   const user = userEvent.setup();
   renderManager('1');
   await screen.findByText(unclaimedCode.code);
   for (const [code, label] of [
     [unclaimedCode, '待领取'],
-    [unusedCode, '已领取'],
-    [usedCode, '已兑换'],
+    [claimedCode, '已领取'],
+    [redeemedCode, '已兑换'],
   ] as const) {
     const row = screen.getByText(code.code).closest('tr')!;
     expect(within(row).getByText(label)).toBeVisible();
@@ -477,21 +477,21 @@ test('明细显示三种状态和使用时间，仅待领取可删除，三种�
     );
     await user.click(within(row).getByRole('button', { name: `收起 ${code.code} 详情` }));
   }
-  await user.click(screen.getByRole('button', { name: `展开 ${usedCode.code} 详情` }));
+  await user.click(screen.getByRole('button', { name: `展开 ${redeemedCode.code} 详情` }));
   const expectedTime = new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(usedCode.redeemedMarkedAt);
+  }).format(redeemedCode.redeemedMarkedAt);
   expect(screen.getByText(expectedTime)).toBeVisible();
   expect(screen.getByText('兑换标记时间')).toBeVisible();
   expect(screen.queryByRole('columnheader', { name: '兑换标记时间' })).not.toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: `收起 ${usedCode.code} 详情` }));
+  await user.click(screen.getByRole('button', { name: `收起 ${redeemedCode.code} 详情` }));
   for (const [label, code] of [
-    ['已兑换', usedCode],
-    ['已领取', unusedCode],
+    ['已兑换', redeemedCode],
+    ['已领取', claimedCode],
     ['待领取', unclaimedCode],
   ] as const) {
     await user.click(screen.getByRole('button', { name: label }));

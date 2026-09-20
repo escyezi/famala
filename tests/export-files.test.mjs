@@ -3,6 +3,7 @@ import { unzipSync, strFromU8 } from 'fflate';
 import { ExportWriter, csvLine, safeName } from '../src/react-app/export/writer.ts';
 import { zh } from '../src/react-app/i18n/zh-CN.ts';
 import { en } from '../src/react-app/i18n/en.ts';
+import { MAX_POOL_NAME_LENGTH } from '../src/shared/contracts.ts';
 
 const startedAt = Date.UTC(2026, 8, 19, 1, 2, 3);
 const rows = [
@@ -118,7 +119,7 @@ test('CSV escaping and safe file names preserve values without protecting formul
 test.each([false, true])(
   'CSV filenames fit UTF-8 byte limits without changing pool names (ZIP: %s)',
   async (allPools) => {
-    const name = '😀'.repeat(60);
+    const name = '😀'.repeat(MAX_POOL_NAME_LENGTH);
     const writer = new ExportWriter({
       status: 'unclaimed',
       allPools,
@@ -126,7 +127,7 @@ test.each([false, true])(
       labels: zh.exports,
     });
     writer.startPool({ id: Number.MAX_SAFE_INTEGER, name, maxId: 1 });
-    writer.addRows([{ ...rows[0], status: 'unclaimed' }]);
+    writer.addRows([{ ...rows[0], status: 'unclaimed', claimedAt: null, remark: null }]);
     writer.endPool(startedAt + 1000);
     const result = writer.finish(startedAt + 2000);
     const bytes = new Uint8Array(await result.blob.arrayBuffer());
