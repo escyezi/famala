@@ -121,9 +121,3 @@ wrangler.jsonc   Cloudflare Worker、D1 和环境配置
 后续发布可更新本地代码并重复第 4 步。只有更换密钥时才需重新上传 Secret。Wrangler 会自动使用 Vite 构建生成的配置，无需额外的部署配置文件或配置生成脚本。
 
 使用自定义域名时，在 Cloudflare 中进入 Worker 的 **Settings → Domains & Routes → Add → Custom Domain** 添加域名。域名所在区域需要已在同一 Cloudflare 账号中生效。`TURNSTILE_HOSTNAMES` 仅用于验证，不会将域名绑定到 Worker；Turnstile Widget 中也要允许该主机名。
-
-环境变量文件只提交 `.env.example`。`.env` 和旧版 `.dev.vars*` 被 Git 忽略，用于本地开发；部署不会将其内容自动上传为生产密钥。不要将真实密钥写入 `vars`、源码或 `VITE_*` 等前端变量。应用的生产验证会拒绝公开测试密钥。
-
-使用 HTTPS，并验证线上应用和 Turnstile 配置。当前每批 500 条的导出性能仍需在独立 Cloudflare 测试部署上验证：使用满量数据，测量 Worker CPU（目标 P95 < 8 ms）、D1 `rows_read`、资源超限错误及移动设备内存占用。如果不达标，将 `EXPORT_BATCH_SIZE` 降至 200，更新分页测试，并在生产发布前重新验证。
-
-可观测性配置使用 1% tracing 采样，并移除 URL 查询参数。应用异常日志仅包含操作名、阶段、分类、关联 ID 和耗时；响应通过 `X-Request-ID` 提供定位信息。部署后应复核采样量及保留策略。
