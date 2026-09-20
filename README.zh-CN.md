@@ -18,9 +18,7 @@ cp .env.example .env
 npm run dev
 ```
 
-如果已有 `.env`，请合并示例配置，不要直接覆盖。从旧版升级时，将 `.dev.vars` 的配置迁移到 `.env` 后移除 `.dev.vars`，否则 Wrangler 会优先使用 `.dev.vars`。访问 <http://127.0.0.1:5173>。`predev` 脚本会自动应用本地 D1 迁移，本地数据保存在 `.wrangler/state/`，重启后仍会保留。
-
-唯一的 `.env.example` 已填入可直接使用的本地配置：开发模式、Turnstile 公开测试密钥和本地主机名。本地 D1 模拟 `wrangler.jsonc` 中的 `DB` 绑定，开发时禁用远程绑定。服务端验证仍需访问 `challenges.cloudflare.com`。
+如果已有 `.env`，请合并示例配置，不要直接覆盖。
 
 ### 常用命令
 
@@ -59,12 +57,6 @@ drizzle/        数据库迁移
 tests/          组件、API 及其他自动化测试
 wrangler.jsonc   Cloudflare Worker、D1 和环境配置
 ```
-
-数据库结构变更通过新增迁移维护，不改写已应用的迁移。前后端通过 Hono RPC 共享接口类型，应一同构建和部署。
-
-持久化计数由应用维护，不使用数据库触发器。每次明细写入必须与计数更新放入同一个 `DB.batch()` 事务。使用 `withCounterUpdate` 保持两条语句相邻，确保 SQL `changes()` 指向该次明细写入。直接写入明细的测试数据准备和维护脚本，也必须同步维护计数，或在暂停写入后显式重建。计数校验与重建会扫描现有数据并消耗 D1 额度，应按需显式执行，不定时运行。两种计数命令都要求明确指定 `--local` 或 `--remote` 目标。
-
-会话清理是显式维护命令，不在业务请求中扫描。必须选择 `--local` 或 `--remote`；`--batches` 默认 1、最多 10。每批利用过期时间索引，最多删除 1,000 条会话；后续批次失败不会回滚已完成批次。执行频率应在测量增长量后决定。模块边界与验收记录见[维护说明](docs/maintainability-implementation.zh-CN.md)。
 
 ## 部署
 

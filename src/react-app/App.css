@@ -8,3 +8,12 @@
 @import './styles/records.css';
 @import './styles/pool-dialogs.css';
 @import './styles/claims.css';
+
+@media (any-pointer: coarse) {
+  /* Override component font sizes to prevent iOS input focus zoom, including in landscape. */
+  input:not([type='checkbox']):not([type='radio']),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
