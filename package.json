@@ -1,5 +1,6 @@
 {
   "name": "famala",
+  "license": "MIT",
   "description": "Key-based redemption code distribution on Cloudflare Workers and D1",
   "cloudflare": {
     "label": "Famala",

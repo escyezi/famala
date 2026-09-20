@@ -4,6 +4,8 @@
 
 Famala 是一个兑换码发放 Web 应用，使用 React、Vite 和 TypeScript 构建。后端采用 Hono，运行于 Cloudflare Workers，通过 Cloudflare D1 和 Drizzle ORM 存储数据，并使用 Cloudflare Turnstile 进行验证。界面支持简体中文和英文。
 
+本项目采用 [MIT 许可证](./LICENSE)。
+
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fescyezi%2Ffamala)
 
 ## 开发

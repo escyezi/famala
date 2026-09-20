@@ -4,6 +4,8 @@
 
 Famala is a web application for distributing redemption codes, built with React, Vite, and TypeScript. Its Hono API runs on Cloudflare Workers, with Cloudflare D1 and Drizzle ORM for data storage and Cloudflare Turnstile for verification. The interface supports Simplified Chinese and English.
 
+Licensed under the [MIT License](./LICENSE).
+
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fescyezi%2Ffamala)
 
 ## Development
