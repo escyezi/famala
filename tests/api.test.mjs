@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
-import { afterAll, beforeAll, beforeEach, test, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, test, vi } from 'vitest';
 import { readdir, readFile } from 'node:fs/promises';
 import { getPlatformProxy } from 'wrangler';
 import app from '../src/worker/index.ts';
 import { hc } from 'hono/client';
 import { digest, SESSION_MS } from '../src/worker/auth.ts';
+import { withCounterUpdate } from '../src/worker/db/counters.ts';
+
+const checkCountersSQL = await readFile('scripts/sql/check-counters.sql', 'utf8');
+const rebuildCountersSQL = await readFile('scripts/sql/rebuild-counters.sql', 'utf8');
 
 let proxy;
 let env;
@@ -41,6 +45,14 @@ beforeEach(() => {
     }
     return realFetch(input, init);
   });
+});
+afterEach(async () => {
+  if (env)
+    assert.deepEqual(
+      (await env.DB.prepare(checkCountersSQL).all()).results,
+      [],
+      'Counters must match the independent aggregate after every API test',
+    );
 });
 afterAll(async () => {
   vi.unstubAllGlobals();
@@ -169,15 +181,20 @@ test('workspace pool limit is atomic, includes stopped pools and frees capacity 
 });
 
 async function seedCodes(p, count) {
-  await env.DB.prepare(
-    `
+  await env.DB.batch(
+    withCounterUpdate(
+      env.DB,
+      p.id,
+      'insert',
+      env.DB.prepare(
+        `
     WITH RECURSIVE numbers(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM numbers WHERE n < ?)
     INSERT INTO redemption_codes (pool_id, code, created_at)
     SELECT ?, 'seed-' || n, 1 FROM numbers
   `,
-  )
-    .bind(count, p.id)
-    .run();
+      ).bind(count, p.id),
+    ),
+  );
 }
 
 test('pool capacity imports valid new codes in order and counts claimed and redeemed codes', async () => {
@@ -269,6 +286,10 @@ test('concurrent imports cannot exceed 5000 codes per pool', async () => {
 function importTestDB(afterWrite = async () => {}) {
   let queries = 0;
   let maxParameters = 0;
+  const executions = [];
+  const record = (query, result) => {
+    executions.push({ query, meta: result.meta });
+  };
   const statements = new WeakMap();
   const countQueries = (count) => {
     queries += count;
@@ -286,9 +307,12 @@ function importTestDB(afterWrite = async () => {}) {
         if (['all', 'raw', 'first', 'run'].includes(key))
           return async (...args) => {
             countQueries(1);
-            const result = await target[key](...args);
+            // Drizzle's raw() omits meta. all() returns the same ordered columns
+            // plus real D1 row metrics, without executing the query twice.
+            const result = key === 'raw' ? await target.all() : await target[key](...args);
+            record(query, result);
             if (/WITH incoming/.test(query)) await afterWrite();
-            return result;
+            return key === 'raw' ? result.results.map((row) => Object.values(row)) : result;
           };
         const value = target[key];
         return typeof value === 'function' ? value.bind(target) : value;
@@ -304,11 +328,21 @@ function importTestDB(afterWrite = async () => {}) {
         countQueries(batch.length);
         const entries = batch.map((statement) => statements.get(statement));
         const results = await env.DB.batch(entries.map((entry) => entry.statement));
+        results.forEach((result, i) => record(entries[i].query, result));
         if (entries.some((entry) => /WITH incoming/.test(entry.query))) await afterWrite();
         return results;
       },
     },
-    stats: () => ({ queries, maxParameters }),
+    stats: () => ({
+      queries,
+      maxParameters,
+      rowsRead: executions.reduce((sum, r) => sum + (r.meta?.rows_read ?? 0), 0),
+      rowsWritten: executions.reduce((sum, r) => sum + (r.meta?.rows_written ?? 0), 0),
+      counterWrites: executions.filter(
+        (r) => /^UPDATE code_pools SET/.test(r.query) && r.meta?.changes > 0,
+      ).length,
+      executions,
+    }),
   };
 }
 
@@ -338,8 +372,12 @@ test.each(['new', 'duplicate', 'full', 'partial'])(
           (scenario === 'duplicate' ? 'DUPLICATE_IN_POOL' : 'POOL_CODE_LIMIT'),
       ),
     );
-    assert.ok(measured.stats().queries <= 50);
-    assert.ok(measured.stats().maxParameters <= 100);
+    assert.equal(measured.stats().queries, 39);
+    assert.equal(measured.stats().maxParameters, 95);
+    assert.equal(
+      measured.stats().counterWrites,
+      scenario === 'new' ? 12 : scenario === 'partial' ? 1 : 0,
+    );
     assert.equal(
       (
         await env.DB.prepare('SELECT count(*) AS total FROM redemption_codes WHERE pool_id = ?')
@@ -362,15 +400,25 @@ test.each(['duplicate deleted', 'overflow inserted'])(
     const measured = importTestDB(async () => {
       changes++;
       const statements = [
-        env.DB.prepare("DELETE FROM redemption_codes WHERE pool_id = ? AND code = 'seed-1'").bind(
+        ...withCounterUpdate(
+          env.DB,
           p.id,
+          'deleteUnclaimed',
+          env.DB.prepare("DELETE FROM redemption_codes WHERE pool_id = ? AND code = 'seed-1'").bind(
+            p.id,
+          ),
         ),
       ];
       if (scenario === 'overflow inserted')
         statements.push(
-          env.DB.prepare(
-            "INSERT INTO redemption_codes (pool_id, code, created_at) VALUES (?, 'OVERFLOW', 1)",
-          ).bind(p.id),
+          ...withCounterUpdate(
+            env.DB,
+            p.id,
+            'insert',
+            env.DB.prepare(
+              "INSERT INTO redemption_codes (pool_id, code, created_at) VALUES (?, 'OVERFLOW', 1)",
+            ).bind(p.id),
+          ),
         );
       await env.DB.batch(statements);
     });
@@ -424,10 +472,6 @@ test('deleting a pool removes all its codes, invalidates sharing, and preserves 
   );
   assert.equal((await request('/api/claim/validate', { claimKey: p.claimKey })).status, 404);
   assert.equal((await claim(p)).status, 404);
-  assert.equal(
-    (await request('/api/claim/used', { claimKey: p.claimKey, code: claimed.body.code })).status,
-    404,
-  );
   assert.equal((await deleted(p, owner.cookie)).status, 404);
   assert.equal((await claim(other)).body.code, 'KEEP');
   const replacement = await pool(owner.cookie, p.name);
@@ -496,7 +540,7 @@ test.each([
   [
     'import',
     /WITH incoming/,
-    { text: Array.from({ length: 31 }, (_, i) => `RACE-${i}`).join('\n') },
+    { text: Array.from({ length: 46 }, (_, i) => `RACE-${i}`).join('\n') },
     2,
   ],
   ['name', /UPDATE OR IGNORE/, { name: 'renamed' }, 1],
@@ -583,6 +627,7 @@ test('all business tables generate integer IDs without reusing deleted IDs', asy
     const second = await insert();
     assert.ok(second.id > first.id, `${table} must not reuse its deleted maximum ID`);
   }
+  await env.DB.prepare(rebuildCountersSQL).run(); // This test intentionally seeds tables directly.
   assert.deepEqual((await env.DB.prepare('PRAGMA foreign_key_check').all()).results, []);
 });
 
@@ -770,17 +815,13 @@ test('concurrent duplicate imports never insert a duplicate code', async () => {
   );
 });
 
-test('concurrent claims allocate unique codes; recipient marking endpoint is removed', async () => {
+test('concurrent claims allocate unique codes and reject claims once the pool is empty', async () => {
   const owner = await space();
   const p = await pool(owner.cookie);
   await imported(
     p,
     owner.cookie,
     Array.from({ length: 12 }, (_, i) => `CONCURRENT-${i}`).join('\n'),
-  );
-  assert.equal(
-    (await request('/api/claim/used', { claimKey: p.claimKey, code: 'CONCURRENT-0' })).status,
-    404,
   );
   const responses = await Promise.all(
     Array.from({ length: 22 }, () => claim(p, { remark: '  领取备注  ' })),
@@ -1102,7 +1143,6 @@ test('RPC validators reject untyped callers with invalid body and query fields',
     );
   assert.equal((await request('/api/login', { key: 42 })).status, 401);
   assert.equal((await request('/api/claim/validate', { claimKey: 42 })).status, 404);
-  assert.equal((await request('/api/claim/used', { claimKey: p.claimKey, code: 42 })).status, 404);
   assert.equal((await claim(p, { turnstileToken: 42 })).status, 400);
   assert.equal(verificationCalls, 0);
 });
@@ -1293,21 +1333,11 @@ test('a code claimed after deletion starts is protected when the DELETE executes
   const bindings = {
     ...env,
     DB: {
-      prepare(query) {
-        const statement = env.DB.prepare(query);
-        if (!/^delete from "redemption_codes"/i.test(query)) return statement;
-        return {
-          bind(...params) {
-            const bound = statement.bind(...params);
-            const execute = async (method) => {
-              // Force the claim to finish after ownership checks, before the DELETE runs.
-              issued = await claim(p);
-              assert.equal(issued.status, 200);
-              return bound[method]();
-            };
-            return { all: () => execute('all'), raw: () => execute('raw') };
-          },
-        };
+      prepare: (query) => env.DB.prepare(query),
+      async batch(statements) {
+        issued = await claim(p);
+        assert.equal(issued.status, 200);
+        return env.DB.batch(statements);
       },
     },
   };
@@ -1416,20 +1446,11 @@ test('bulk deletion skips a code claimed just before the delete statement execut
   const bindings = {
     ...env,
     DB: {
-      prepare(query) {
-        const statement = env.DB.prepare(query);
-        if (!/^delete from "redemption_codes"/i.test(query)) return statement;
-        return {
-          bind(...params) {
-            const bound = statement.bind(...params);
-            const execute = async (method) => {
-              issued = await claim(p);
-              assert.equal(issued.status, 200);
-              return bound[method]();
-            };
-            return { all: () => execute('all'), raw: () => execute('raw') };
-          },
-        };
+      prepare: (query) => env.DB.prepare(query),
+      async batch(statements) {
+        issued = await claim(p);
+        assert.equal(issued.status, 200);
+        return env.DB.batch(statements);
       },
     },
   };
@@ -1598,19 +1619,19 @@ test('redeemed import validates ownership, text and limits and supports 500 Unic
 test('redeemed import rolls back earlier chunks when a later update fails', async () => {
   const owner = await space();
   const p = await pool(owner.cookie);
-  const codes = Array.from({ length: 60 }, (_, i) => `ROLLBACK-${i}`);
+  const codes = Array.from({ length: 70 }, (_, i) => `ROLLBACK-${i}`);
   await imported(p, owner.cookie, codes.join('\n'));
   await env.DB.prepare(
-    `CREATE TRIGGER reject_redemption BEFORE UPDATE ON redemption_codes WHEN NEW.pool_id = ${p.id} AND NEW.code = 'ROLLBACK-59' BEGIN SELECT RAISE(ABORT, 'test failure'); END`,
+    `CREATE TRIGGER reject_redemption BEFORE UPDATE ON redemption_codes WHEN NEW.pool_id = ${p.id} AND NEW.code = 'ROLLBACK-69' BEGIN SELECT RAISE(ABORT, 'test failure'); END`,
   ).run();
   try {
     assert.equal((await markRedeemed(p, owner.cookie, codes.join('\n'))).status, 500);
     const stats = (await request(`/api/manage/pools/${p.id}/codes`, undefined, owner.cookie)).body;
-    assert.deepEqual(stats.summary, { total: 60, remaining: 60, claimed: 0, redeemed: 0 });
+    assert.deepEqual(stats.summary, { total: 70, remaining: 70, claimed: 0, redeemed: 0 });
   } finally {
     await env.DB.prepare('DROP TRIGGER reject_redemption').run();
   }
-  assert.equal((await markRedeemed(p, owner.cookie, codes.join('\n'))).body.marked, 60);
+  assert.equal((await markRedeemed(p, owner.cookie, codes.join('\n'))).body.marked, 70);
 });
 
 test('concurrent redeemed imports count each transition once', async () => {
@@ -1837,5 +1858,364 @@ test('export query validation rejects invalid integers, duplicates and filters',
       owner.cookie,
     );
     assert.equal(result.status, 400, query);
+  }
+});
+
+test('500 mixed redemption codes fit 48 queries and 62 parameters without counting no-ops', async () => {
+  const owner = await space();
+  const p = await pool(owner.cookie);
+  await seedCodes(p, 4980);
+  // Seed mixed states with the same transaction contract used by every writer.
+  await env.DB.batch(
+    withCounterUpdate(
+      env.DB,
+      p.id,
+      'claim',
+      env.DB.prepare(
+        "UPDATE redemption_codes SET status = 'claimed', claimed_at = 2, remark = 'preserved' WHERE pool_id = ? AND CAST(substr(code, 6) AS INTEGER) % 2 = 0 AND CAST(substr(code, 6) AS INTEGER) <= 500",
+      ).bind(p.id),
+    ),
+  );
+  const text = Array.from({ length: 500 }, (_, i) => `seed-${i + 1}`).join('\n');
+  const measured = importTestDB();
+  const result = await markRedeemed(p, owner.cookie, text, { ...env, DB: measured.db });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, {
+    marked: 500,
+    alreadyRedeemed: 0,
+    removedFromAvailable: 250,
+    failed: 0,
+    failures: [],
+  });
+  assert.equal(measured.stats().queries, 48);
+  assert.equal(measured.stats().maxParameters, 62);
+  assert.equal(measured.stats().counterWrites, 18);
+  const repeated = importTestDB();
+  assert.equal(
+    (await markRedeemed(p, owner.cookie, text, { ...env, DB: repeated.db })).body.alreadyRedeemed,
+    500,
+  );
+  assert.equal(repeated.stats().counterWrites, 0);
+  const page = (await request(`/api/manage/pools/${p.id}/codes`, undefined, owner.cookie)).body;
+  assert.deepEqual(page.summary, { total: 4980, remaining: 4480, redeemed: 500, claimed: 250 });
+  assert.equal(
+    await env.DB.prepare(
+      "SELECT count(*) AS n FROM redemption_codes WHERE pool_id = ? AND claimed_at = 2 AND remark = 'preserved'",
+    )
+      .bind(p.id)
+      .first('n'),
+    250,
+  );
+});
+
+test.each(['claim', 'delete', 'bulk delete', 'import', 'redeem'])(
+  '%s rolls back details when the counter update fails',
+  async (operation) => {
+    const owner = await space();
+    const p = await pool(owner.cookie);
+    await imported(p, owner.cookie, 'KEEP');
+    const id = await env.DB.prepare('SELECT id FROM redemption_codes WHERE pool_id = ?')
+      .bind(p.id)
+      .first('id');
+    await env.DB.prepare(
+      `CREATE TRIGGER reject_counter BEFORE UPDATE OF total_count, unclaimed_count, redeemed_count, claimed_total_count ON code_pools WHEN OLD.id = ${p.id} BEGIN SELECT RAISE(ABORT, 'counter failure'); END`,
+    ).run();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const result =
+        operation === 'claim'
+          ? await claim(p)
+          : operation === 'import'
+            ? await imported(p, owner.cookie, 'NEW')
+            : operation === 'redeem'
+              ? await markRedeemed(p, owner.cookie, 'KEEP')
+              : await request(
+                  `/api/manage/pools/${p.id}/codes${operation === 'delete' ? `/${id}` : ''}`,
+                  operation === 'delete' ? {} : { ids: [id] },
+                  owner.cookie,
+                  env,
+                  {},
+                  'DELETE',
+                );
+      assert.equal(result.status, 500);
+      const rows = await env.DB.prepare(
+        'SELECT code, status FROM redemption_codes WHERE pool_id = ?',
+      )
+        .bind(p.id)
+        .all();
+      assert.deepEqual(rows.results, [{ code: 'KEEP', status: 'unclaimed' }]);
+      assert.deepEqual(
+        (await request(`/api/manage/pools/${p.id}/codes`, undefined, owner.cookie)).body.summary,
+        { total: 1, remaining: 1, redeemed: 0, claimed: 0 },
+      );
+    } finally {
+      await env.DB.prepare('DROP TRIGGER reject_counter').run();
+      log.mockRestore();
+    }
+  },
+);
+
+test('ordinary import retains committed chunks when the next chunk counter update fails', async () => {
+  const owner = await space();
+  const p = await pool(owner.cookie);
+  await env.DB.prepare(
+    `CREATE TRIGGER reject_later_counter BEFORE UPDATE OF total_count ON code_pools WHEN OLD.id = ${p.id} AND OLD.total_count >= 45 BEGIN SELECT RAISE(ABORT, 'later counter failure'); END`,
+  ).run();
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    const result = await imported(
+      p,
+      owner.cookie,
+      Array.from({ length: 90 }, (_, i) => `PART-${i}`).join('\n'),
+    );
+    assert.equal(result.status, 500);
+    assert.equal(
+      await env.DB.prepare('SELECT count(*) AS n FROM redemption_codes WHERE pool_id = ?')
+        .bind(p.id)
+        .first('n'),
+      45,
+    );
+    assert.equal(
+      await env.DB.prepare('SELECT total_count FROM code_pools WHERE id = ?')
+        .bind(p.id)
+        .first('total_count'),
+      45,
+    );
+  } finally {
+    await env.DB.prepare('DROP TRIGGER reject_later_counter').run();
+    log.mockRestore();
+  }
+});
+
+test('counter reads stay bounded as a pool grows and capacity checks do not scan existing codes', async () => {
+  const owner = await space();
+  const p = await pool(owner.cookie);
+  const readStats = async () => {
+    const measured = importTestDB();
+    const bindings = { ...env, DB: measured.db };
+    const publicResult = await request(
+      '/api/claim/validate',
+      { claimKey: p.claimKey },
+      undefined,
+      bindings,
+    );
+    assert.equal(publicResult.status, 200);
+    assert.equal(measured.stats().queries, 1);
+    const publicReads = measured.stats().rowsRead;
+    assert.ok(publicReads > 0 && publicReads <= 10);
+    assert.ok(measured.stats().executions.every((r) => !/redemption_codes/i.test(r.query)));
+    await request('/api/manage/pools', undefined, owner.cookie, bindings);
+    assert.ok(measured.stats().executions.every((r) => !/redemption_codes/i.test(r.query)));
+    return { publicReads, listReads: measured.stats().rowsRead - publicReads };
+  };
+  const empty = await readStats();
+  await seedCodes(p, 5000);
+  const full = await readStats();
+  assert.deepEqual(full, empty);
+  const pageMetrics = importTestDB();
+  await request(`/api/manage/pools/${p.id}/codes`, undefined, owner.cookie, {
+    ...env,
+    DB: pageMetrics.db,
+  });
+  assert.equal(
+    pageMetrics.stats().executions.filter((r) => /redemption_codes/i.test(r.query)).length,
+    1,
+  );
+  const importStats = [];
+  for (const existing of [0, 4500]) {
+    const target = await pool(owner.cookie);
+    if (existing) await seedCodes(target, existing);
+    const measured = importTestDB();
+    const result = await request(
+      `/api/manage/pools/${target.id}/import`,
+      { text: Array.from({ length: 500 }, (_, i) => `NEW-${i}`).join('\n') },
+      owner.cookie,
+      { ...env, DB: measured.db },
+    );
+    assert.equal(result.body.succeeded, 500);
+    assert.ok(measured.stats().executions.every((r) => !/count\s*\(/i.test(r.query)));
+    importStats.push({
+      existing,
+      reads: measured.stats().rowsRead,
+      writes: measured.stats().rowsWritten,
+    });
+  }
+  assert.ok(importStats[1].reads <= importStats[0].reads + 100);
+  assert.ok(importStats[0].reads > 0 && importStats[0].writes >= 500);
+  console.info('Local D1 counter metrics', JSON.stringify({ empty, full, importStats }));
+});
+
+async function seedOrderedCodes(p, count) {
+  await seedCodes(p, count);
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE redemption_codes SET
+        status = CASE id % 3 WHEN 0 THEN 'unclaimed' WHEN 1 THEN 'claimed' ELSE 'redeemed' END,
+        claimed_at = CASE WHEN id % 3 = 1 THEN 100 END,
+        redeemed_marked_at = CASE WHEN id % 3 = 2 THEN 100 END,
+        created_at = id % 7
+       WHERE pool_id = ?`,
+    ).bind(p.id),
+    env.DB.prepare(rebuildCountersSQL),
+  ]);
+}
+
+test('ordered pages, claims and exports preserve timestamp ties, pool boundaries and every state', async () => {
+  const owner = await space();
+  const p = await pool(owner.cookie);
+  const other = await pool(owner.cookie);
+  await seedOrderedCodes(p, 90);
+  await seedOrderedCodes(other, 90);
+  const records = (
+    await env.DB.prepare('SELECT * FROM redemption_codes WHERE pool_id = ?').bind(p.id).all()
+  ).results;
+  const maxId = Math.max(...records.map((r) => r.id));
+  for (const status of ['all', 'unclaimed', 'claimed', 'redeemed']) {
+    const filtered = records.filter((r) => status === 'all' || r.status === status);
+    const descending = [...filtered].sort((a, b) => b.created_at - a.created_at || b.id - a.id);
+    const actual = [];
+    for (let page = 1; page <= Math.ceil(filtered.length / 20); page++) {
+      const result = await request(
+        `/api/manage/pools/${p.id}/codes?status=${status}&pageSize=20&page=${page}`,
+        undefined,
+        owner.cookie,
+      );
+      assert.equal(result.status, 200);
+      assert.equal(result.body.total, filtered.length);
+      actual.push(...result.body.items.map((r) => r.id));
+    }
+    assert.deepEqual(
+      actual,
+      descending.map((r) => r.id),
+    );
+    const exported = await request(
+      `/api/manage/pools/${p.id}/codes/export?maxId=${maxId}&status=${status}`,
+      undefined,
+      owner.cookie,
+    );
+    assert.equal(exported.status, 200);
+    assert.deepEqual(
+      exported.body.items.map((r) => r.id),
+      filtered.map((r) => r.id).sort((a, b) => a - b),
+    );
+    assert.equal(exported.body.nextCursor, null);
+  }
+  const available = records
+    .filter((r) => r.status === 'unclaimed')
+    .sort((a, b) => a.created_at - b.created_at || a.id - b.id);
+  for (const expected of available.slice(0, 3)) {
+    const result = await claim(p);
+    assert.equal(result.status, 200);
+    assert.equal(result.body.code, expected.code);
+  }
+  assert.equal(
+    await env.DB.prepare('SELECT claimed_total_count FROM code_pools WHERE id = ?')
+      .bind(other.id)
+      .first('claimed_total_count'),
+    30,
+  );
+});
+
+test('order indexes bound D1 first-page and claim reads and record write overhead', async () => {
+  // This proxy uses persist:false. Index changes only affect this test's temporary
+  // database; restore them even when an assertion fails.
+  const migration = (await readFile('drizzle/0003_code_order_indexes.sql', 'utf8'))
+    .split('--> statement-breakpoint')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const measure = async (operation) => {
+    const measured = importTestDB();
+    const result = await operation({ ...env, DB: measured.db });
+    assert.equal(result.status, 200);
+    const stats = measured.stats();
+    return {
+      reads: stats.executions
+        .filter((r) => /redemption_codes/.test(r.query))
+        .reduce((sum, r) => sum + r.meta.rows_read, 0),
+      writes: stats.rowsWritten,
+    };
+  };
+  const sample = async () => {
+    const owner = await space();
+    const samples = {};
+    for (const size of [90, 5000]) {
+      const p = await pool(owner.cookie);
+      await seedOrderedCodes(p, size);
+      const pages = {};
+      for (const status of ['all', 'unclaimed', 'claimed', 'redeemed']) {
+        pages[status] = await measure((bindings) =>
+          request(
+            `/api/manage/pools/${p.id}/codes?status=${status}&pageSize=20`,
+            undefined,
+            owner.cookie,
+            bindings,
+          ),
+        );
+      }
+      const allocation = await measure((bindings) => claim(p, {}, bindings));
+      samples[size] = { pages, claim: allocation };
+    }
+    const target = await pool(owner.cookie);
+    const writes = {};
+    writes.import = await measure((bindings) =>
+      request(
+        `/api/manage/pools/${target.id}/import`,
+        { text: Array.from({ length: 45 }, (_, i) => `MEASURE-${i}`).join('\n') },
+        owner.cookie,
+        bindings,
+      ),
+    );
+    const allocated = await claim(target);
+    assert.equal(allocated.body.code, 'MEASURE-0');
+    writes.redeemUnclaimed = await measure((bindings) =>
+      markRedeemed(target, owner.cookie, 'MEASURE-1', bindings),
+    );
+    writes.redeemClaimed = await measure((bindings) =>
+      markRedeemed(target, owner.cookie, allocated.body.code, bindings),
+    );
+    const id = await env.DB.prepare(
+      "SELECT id FROM redemption_codes WHERE pool_id = ? AND code = 'MEASURE-2'",
+    )
+      .bind(target.id)
+      .first('id');
+    writes.delete = await measure((bindings) =>
+      request(
+        `/api/manage/pools/${target.id}/codes/${id}`,
+        {},
+        owner.cookie,
+        bindings,
+        {},
+        'DELETE',
+      ),
+    );
+    return { samples, writes };
+  };
+  try {
+    await env.DB.batch([
+      env.DB.prepare('CREATE INDEX codes_pool_status_idx ON redemption_codes(pool_id, status)'),
+      env.DB.prepare('DROP INDEX codes_pool_status_created_id_idx'),
+      env.DB.prepare('DROP INDEX codes_pool_created_id_idx'),
+    ]);
+    const before = await sample();
+    await env.DB.batch(migration.map((sql) => env.DB.prepare(sql)));
+    const after = await sample();
+    console.info('Local D1 order index metrics', JSON.stringify({ before, after }));
+    for (const status of ['all', 'unclaimed', 'claimed', 'redeemed']) {
+      const large = after.samples[5000].pages[status].reads;
+      assert.ok(large > 0 && large <= 100, `${status}: ${large} reads`);
+      assert.ok(large <= after.samples[90].pages[status].reads + 5);
+      assert.ok(large < before.samples[5000].pages[status].reads / 10);
+    }
+    assert.ok(after.samples[5000].claim.reads <= after.samples[90].claim.reads + 5);
+    assert.ok(after.samples[5000].claim.reads < before.samples[5000].claim.reads / 10);
+    assert.ok(after.writes.import.writes > before.writes.import.writes);
+    for (const result of Object.values(after.writes)) assert.ok(result.writes > 0);
+  } finally {
+    await env.DB.batch([
+      ...migration
+        .slice(0, 2)
+        .map((sql) => env.DB.prepare(sql.replace('CREATE INDEX', 'CREATE INDEX IF NOT EXISTS'))),
+      env.DB.prepare('DROP INDEX IF EXISTS codes_pool_status_idx'),
+    ]);
   }
 });

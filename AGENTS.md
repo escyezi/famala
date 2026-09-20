@@ -1,1 +1,2 @@
-Keep README content limited to the project overview, development, and deployment; omit business details, and always update the English `README.md` and Chinese `README.zh-CN.md` together to keep their content consistent.
+- Keep README content limited to the project overview, development, and deployment; omit business details, and always update the English `README.md` and Chinese `README.zh-CN.md` together to keep their content consistent.
+- When designing database schemas and query/write logic, account for Cloudflare D1 limits and quotas.

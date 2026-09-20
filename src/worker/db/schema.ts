@@ -37,6 +37,10 @@ export const codePools = sqliteTable(
       .notNull()
       .default('active'),
     createdAt: integer('created_at').notNull(),
+    totalCount: integer('total_count').notNull().default(0),
+    unclaimedCount: integer('unclaimed_count').notNull().default(0),
+    redeemedCount: integer('redeemed_count').notNull().default(0),
+    claimedTotalCount: integer('claimed_total_count').notNull().default(0),
   },
   (t) => [
     index('pools_space_idx').on(t.spaceId),
@@ -63,7 +67,8 @@ export const redemptionCodes = sqliteTable(
   },
   (t) => [
     uniqueIndex('codes_pool_code_unique').on(t.poolId, t.code),
-    index('codes_pool_status_idx').on(t.poolId, t.status),
+    index('codes_pool_status_created_id_idx').on(t.poolId, t.status, t.createdAt, t.id),
+    index('codes_pool_created_id_idx').on(t.poolId, t.createdAt, t.id),
     index('codes_pool_id_idx').on(t.poolId, t.id),
     check('code_length_check', sql`length(${t.code}) BETWEEN 1 AND 100`),
     check('remark_length_check', sql`${t.remark} IS NULL OR length(${t.remark}) <= 500`),

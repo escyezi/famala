@@ -15,6 +15,20 @@
       "when": 1789806674873,
       "tag": "0001_export_cursor_index",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789869341848,
+      "tag": "0002_pool_counters",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789870529497,
+      "tag": "0003_code_order_indexes",
+      "breakpoints": true
     }
   ]
 }

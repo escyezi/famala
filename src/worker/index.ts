@@ -3,9 +3,10 @@ import { ApiException, validationError } from './errors.ts';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
-import { and, asc, count, desc, eq, gt, inArray, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, lte, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { codePools, distributorSessions, distributorSpaces, redemptionCodes } from './db/schema.ts';
+import { withCounterUpdate } from './db/counters.ts';
 import {
   clearSession,
   digest,
@@ -71,19 +72,10 @@ const poolColumns = {
   claimKey: codePools.claimKey,
   status: codePools.status,
   createdAt: codePools.createdAt,
-  total: sql<number>`count(${redemptionCodes.id})`.mapWith(Number),
-  claimed:
-    sql<number>`coalesce(sum(case when ${redemptionCodes.claimedAt} IS NOT NULL then 1 else 0 end), 0)`.mapWith(
-      Number,
-    ),
-  redeemed:
-    sql<number>`coalesce(sum(case when ${redemptionCodes.status} = 'redeemed' then 1 else 0 end), 0)`.mapWith(
-      Number,
-    ),
-  remaining:
-    sql<number>`coalesce(sum(case when ${redemptionCodes.status} = 'unclaimed' then 1 else 0 end), 0)`.mapWith(
-      Number,
-    ),
+  total: codePools.totalCount,
+  claimed: codePools.claimedTotalCount,
+  redeemed: codePools.redeemedCount,
+  remaining: codePools.unclaimedCount,
 };
 async function ownedPool(c: Context<AppEnv>) {
   const rawId = c.req.param('id') ?? '';
@@ -108,9 +100,7 @@ async function publicPool(c: Context<AppEnv>, key: string) {
       remaining: poolColumns.remaining,
     })
     .from(codePools)
-    .leftJoin(redemptionCodes, eq(codePools.id, redemptionCodes.poolId))
     .where(eq(codePools.claimKey, key))
-    .groupBy(codePools.id)
     .get();
   if (!pool) throw new ApiException(404, 'CLAIM_KEY_NOT_FOUND');
   return pool;
@@ -237,9 +227,7 @@ const routes = app
     const items = await drizzle(c.env.DB)
       .select(poolColumns)
       .from(codePools)
-      .leftJoin(redemptionCodes, eq(codePools.id, redemptionCodes.poolId))
       .where(eq(codePools.spaceId, c.get('spaceId')))
-      .groupBy(codePools.id)
       .orderBy(desc(codePools.createdAt), desc(codePools.id));
     return c.json({ items }, 200);
   })
@@ -322,34 +310,40 @@ const routes = app
     const now = Date.now();
     let succeeded = 0;
     // Read duplicates and insert in one transaction so deletion cannot change failure reasons.
-    // 30 rows × 3 values + 4 fixed parameters = 94 (D1 allows 100 per statement).
-    // At most 17 chunks × 2 statements + 3 session/ownership checks = 37 queries.
-    const chunkSize = 30;
+    // 45 rows × 2 values + 5 fixed parameters = 95 (D1 allows 100 per statement).
+    // At most 12 chunks × 3 statements + 3 session/ownership checks = 39 queries.
+    const chunkSize = 45;
     for (let offset = 0; offset < valid.length; offset += chunkSize) {
       const chunk = valid.slice(offset, offset + chunkSize);
       const placeholders = chunk.map(() => '?').join(',');
-      const tuples = chunk.map(() => '(?, ?, ?)').join(',');
+      const tuples = chunk.map(() => '(?, ?)').join(',');
       const [previous, inserted] = await c.env.DB.batch<{ code: string }>([
         c.env.DB.prepare(
           `SELECT code FROM redemption_codes WHERE pool_id = ? AND code IN (${placeholders})`,
         ).bind(pool.id, ...chunk.map((row) => row.code)),
-        c.env.DB.prepare(
-          `
-          WITH incoming(code, created_at, line) AS (VALUES ${tuples})
+        ...withCounterUpdate(
+          c.env.DB,
+          pool.id,
+          'insert',
+          c.env.DB.prepare(
+            `
+          WITH incoming(code, line) AS (VALUES ${tuples})
           INSERT INTO redemption_codes (pool_id, code, created_at)
-          SELECT p.id, incoming.code, incoming.created_at FROM incoming CROSS JOIN code_pools p
+          SELECT p.id, incoming.code, ? FROM incoming CROSS JOIN code_pools p
           WHERE p.id = ? AND p.space_id = ?
             AND NOT EXISTS (SELECT 1 FROM redemption_codes r WHERE r.pool_id = p.id AND r.code = incoming.code)
           ORDER BY incoming.line
-          LIMIT max(0, ? - (SELECT count(*) FROM redemption_codes WHERE pool_id = ?))
+          LIMIT max(0, ? - coalesce((SELECT total_count FROM code_pools WHERE id = ?), 0))
           ON CONFLICT (pool_id, code) DO NOTHING RETURNING code
         `,
-        ).bind(
-          ...chunk.flatMap((row) => [row.code, now, row.line]),
-          pool.id,
-          c.get('spaceId'),
-          MAX_CODES_PER_POOL,
-          pool.id,
+          ).bind(
+            ...chunk.flatMap((row) => [row.code, row.line]),
+            now,
+            pool.id,
+            c.get('spaceId'),
+            MAX_CODES_PER_POOL,
+            pool.id,
+          ),
         ),
       ]);
       const existing = new Set(previous.results.map((row) => row.code));
@@ -388,16 +382,31 @@ const routes = app
     ];
     // D1 batch is a transaction: each SELECT captures the state immediately before
     // its UPDATE, so concurrent claims/imports cannot corrupt the result counts.
-    for (let offset = 0; offset < valid.length; offset += 50) {
-      const codes = valid.slice(offset, offset + 50).map((row) => row.code);
+    // 9 chunks × 5 statements + 3 session/ownership checks = 48 queries.
+    // Each state transition and its counter update must remain adjacent.
+    for (let offset = 0; offset < valid.length; offset += 60) {
+      const codes = valid.slice(offset, offset + 60).map((row) => row.code);
       const placeholders = codes.map(() => '?').join(',');
       statements.push(
         c.env.DB.prepare(
           `SELECT code, status FROM redemption_codes WHERE pool_id = ? AND code IN (${placeholders})`,
         ).bind(pool.id, ...codes),
-        c.env.DB.prepare(
-          `UPDATE redemption_codes SET status = 'redeemed', redeemed_marked_at = ? WHERE pool_id = ? AND code IN (${placeholders}) AND status != 'redeemed'`,
-        ).bind(now, pool.id, ...codes),
+        ...withCounterUpdate(
+          c.env.DB,
+          pool.id,
+          'redeemUnclaimed',
+          c.env.DB.prepare(
+            `UPDATE redemption_codes SET status = 'redeemed', redeemed_marked_at = ? WHERE pool_id = ? AND code IN (${placeholders}) AND status = 'unclaimed'`,
+          ).bind(now, pool.id, ...codes),
+        ),
+        ...withCounterUpdate(
+          c.env.DB,
+          pool.id,
+          'redeemClaimed',
+          c.env.DB.prepare(
+            `UPDATE redemption_codes SET status = 'redeemed', redeemed_marked_at = ? WHERE pool_id = ? AND code IN (${placeholders}) AND status = 'claimed'`,
+          ).bind(now, pool.id, ...codes),
+        ),
       );
     }
     const results = await c.env.DB.batch<{
@@ -407,7 +416,7 @@ const routes = app
     if (!results[0].results.length) return c.json(errorBody('POOL_DELETED'), 404);
     const previous = new Map(
       results
-        .filter((_, index) => index % 2 === 1)
+        .filter((_, index) => index % 5 === 1)
         .flatMap((result) => result.results)
         .map((row) => [row.code, row.status]),
     );
@@ -437,7 +446,7 @@ const routes = app
       filter === 'all' ? undefined : eq(redemptionCodes.status, filter),
     );
     const db = drizzle(c.env.DB);
-    const [items, totals, statistics] = await db.batch([
+    const [items, statistics] = await db.batch([
       db
         .select({
           id: redemptionCodes.id,
@@ -453,26 +462,26 @@ const routes = app
         .orderBy(desc(redemptionCodes.createdAt), desc(redemptionCodes.id))
         .limit(pageSize)
         .offset((page - 1) * pageSize),
-      db.select({ total: count() }).from(redemptionCodes).where(where),
       db
         .select({
-          all: count(),
+          all: codePools.totalCount,
           unclaimed: poolColumns.remaining,
           claimed:
-            sql<number>`coalesce(sum(case when ${redemptionCodes.status} = 'claimed' then 1 else 0 end), 0)`.mapWith(
+            sql<number>`${codePools.totalCount} - ${codePools.unclaimedCount} - ${codePools.redeemedCount}`.mapWith(
               Number,
             ),
           redeemed: poolColumns.redeemed,
           claimedTotal: poolColumns.claimed,
         })
-        .from(redemptionCodes)
-        .where(eq(redemptionCodes.poolId, pool.id)),
+        .from(codePools)
+        .where(and(eq(codePools.id, pool.id), eq(codePools.spaceId, c.get('spaceId')))),
     ]);
+    if (!statistics.length) return c.json(errorBody('POOL_DELETED'), 404);
     const { claimedTotal, ...counts } = statistics[0];
     return c.json(
       {
         items,
-        total: totals[0].total,
+        total: counts[filter],
         page,
         pageSize,
         counts,
@@ -490,17 +499,20 @@ const routes = app
     const pool = await ownedPool(c);
     const { ids } = c.req.valid('json');
     // One atomic statement protects codes claimed after selection and scopes every ID to this pool.
-    const deleted = await drizzle(c.env.DB)
-      .delete(redemptionCodes)
-      .where(
-        and(
-          eq(redemptionCodes.poolId, pool.id),
-          inArray(redemptionCodes.id, ids),
-          eq(redemptionCodes.status, 'unclaimed'),
-        ),
-      )
-      .returning({ id: redemptionCodes.id });
-    return c.json({ deleted: deleted.length, skipped: ids.length - deleted.length }, 200);
+    const [deleted] = await c.env.DB.batch<{ id: number }>(
+      withCounterUpdate(
+        c.env.DB,
+        pool.id,
+        'deleteUnclaimed',
+        c.env.DB.prepare(
+          `DELETE FROM redemption_codes WHERE pool_id = ? AND id IN (${ids.map(() => '?').join(',')}) AND status = 'unclaimed' RETURNING id`,
+        ).bind(pool.id, ...ids),
+      ),
+    );
+    return c.json(
+      { deleted: deleted.results.length, skipped: ids.length - deleted.results.length },
+      200,
+    );
   })
   .delete('/api/manage/pools/:id/codes/:codeId', async (c) => {
     const pool = await ownedPool(c);
@@ -511,11 +523,17 @@ const routes = app
     const db = drizzle(c.env.DB);
     const where = and(eq(redemptionCodes.poolId, pool.id), eq(redemptionCodes.id, codeId));
     // Check the claim state in the DELETE itself, so a concurrent claim cannot be removed.
-    const deleted = await db
-      .delete(redemptionCodes)
-      .where(and(where, eq(redemptionCodes.status, 'unclaimed')))
-      .returning({ id: redemptionCodes.id });
-    if (deleted.length) return c.json({ ok: true }, 200);
+    const [deleted] = await c.env.DB.batch<{ id: number }>(
+      withCounterUpdate(
+        c.env.DB,
+        pool.id,
+        'deleteUnclaimed',
+        c.env.DB.prepare(
+          "DELETE FROM redemption_codes WHERE pool_id = ? AND id = ? AND status = 'unclaimed' RETURNING id",
+        ).bind(pool.id, codeId),
+      ),
+    );
+    if (deleted.results.length) return c.json({ ok: true }, 200);
     const existing = await db
       .select({ id: redemptionCodes.id })
       .from(redemptionCodes)
@@ -552,17 +570,27 @@ const routes = app
       if (!verification.ok)
         return c.json(errorBody('TURNSTILE_FAILED'), verification.unavailable ? 503 : 400);
       // One statement rechecks active status and availability after verification.
-      const row = await measure('code_allocate', () =>
-        drizzle(c.env.DB).get<{ code: string; claimedAt: number }>(sql`
-    UPDATE redemption_codes SET status = 'claimed', claimed_at = ${Date.now()}, remark = ${remark}
+      const [allocated] = await measure('code_allocate', () =>
+        c.env.DB.batch<{ code: string; claimedAt: number }>(
+          withCounterUpdate(
+            c.env.DB,
+            pool.id,
+            'claim',
+            c.env.DB.prepare(
+              `
+    UPDATE redemption_codes SET status = 'claimed', claimed_at = ?, remark = ?
     WHERE id = (
       SELECT r.id FROM redemption_codes r JOIN code_pools p ON p.id = r.pool_id
-      WHERE p.id = ${pool.id} AND p.status = 'active' AND r.status = 'unclaimed'
+      WHERE p.id = ? AND p.status = 'active' AND r.status = 'unclaimed'
       ORDER BY r.created_at, r.id LIMIT 1
     ) AND status = 'unclaimed'
     RETURNING code, claimed_at AS claimedAt
-  `),
+  `,
+            ).bind(Date.now(), remark, pool.id),
+          ),
+        ),
       );
+      const row = allocated.results[0];
       if (!row) {
         const current = await measure('pool_recheck', () => publicPool(c, key));
         return c.json(errorBody(current.status === 'stopped' ? 'POOL_STOPPED' : 'POOL_EMPTY'), 409);

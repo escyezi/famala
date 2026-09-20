@@ -1,0 +1,419 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "945509dc-338b-4217-bd69-5bffc7b1adab",
+  "prevId": "5ca3c46c-715e-4205-ad22-29d015f5c1ba",
+  "tables": {
+    "code_pools": {
+      "name": "code_pools",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "space_id": {
+          "name": "space_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claim_key": {
+          "name": "claim_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "total_count": {
+          "name": "total_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "unclaimed_count": {
+          "name": "unclaimed_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "redeemed_count": {
+          "name": "redeemed_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "claimed_total_count": {
+          "name": "claimed_total_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "code_pools_claim_key_unique": {
+          "name": "code_pools_claim_key_unique",
+          "columns": [
+            "claim_key"
+          ],
+          "isUnique": true
+        },
+        "pools_space_idx": {
+          "name": "pools_space_idx",
+          "columns": [
+            "space_id"
+          ],
+          "isUnique": false
+        },
+        "pools_space_name_unique": {
+          "name": "pools_space_name_unique",
+          "columns": [
+            "space_id",
+            "name"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "code_pools_space_id_distributor_spaces_id_fk": {
+          "name": "code_pools_space_id_distributor_spaces_id_fk",
+          "tableFrom": "code_pools",
+          "tableTo": "distributor_spaces",
+          "columnsFrom": [
+            "space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "pool_name_check": {
+          "name": "pool_name_check",
+          "value": "length(\"code_pools\".\"name\") > 0"
+        },
+        "pool_status_check": {
+          "name": "pool_status_check",
+          "value": "\"code_pools\".\"status\" IN ('active', 'stopped')"
+        }
+      }
+    },
+    "distributor_sessions": {
+      "name": "distributor_sessions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "space_id": {
+          "name": "space_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "distributor_sessions_token_hash_unique": {
+          "name": "distributor_sessions_token_hash_unique",
+          "columns": [
+            "token_hash"
+          ],
+          "isUnique": true
+        },
+        "sessions_space_idx": {
+          "name": "sessions_space_idx",
+          "columns": [
+            "space_id"
+          ],
+          "isUnique": false
+        },
+        "sessions_expiry_idx": {
+          "name": "sessions_expiry_idx",
+          "columns": [
+            "expires_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "distributor_sessions_space_id_distributor_spaces_id_fk": {
+          "name": "distributor_sessions_space_id_distributor_spaces_id_fk",
+          "tableFrom": "distributor_sessions",
+          "tableTo": "distributor_spaces",
+          "columnsFrom": [
+            "space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "session_expiry_check": {
+          "name": "session_expiry_check",
+          "value": "\"distributor_sessions\".\"expires_at\" > \"distributor_sessions\".\"created_at\""
+        }
+      }
+    },
+    "distributor_spaces": {
+      "name": "distributor_spaces",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "key_hash": {
+          "name": "key_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "distributor_spaces_key_hash_unique": {
+          "name": "distributor_spaces_key_hash_unique",
+          "columns": [
+            "key_hash"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "redemption_codes": {
+      "name": "redemption_codes",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "pool_id": {
+          "name": "pool_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'unclaimed'"
+        },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "remark": {
+          "name": "remark",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "redeemed_marked_at": {
+          "name": "redeemed_marked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "codes_pool_code_unique": {
+          "name": "codes_pool_code_unique",
+          "columns": [
+            "pool_id",
+            "code"
+          ],
+          "isUnique": true
+        },
+        "codes_pool_status_created_id_idx": {
+          "name": "codes_pool_status_created_id_idx",
+          "columns": [
+            "pool_id",
+            "status",
+            "created_at",
+            "id"
+          ],
+          "isUnique": false
+        },
+        "codes_pool_created_id_idx": {
+          "name": "codes_pool_created_id_idx",
+          "columns": [
+            "pool_id",
+            "created_at",
+            "id"
+          ],
+          "isUnique": false
+        },
+        "codes_pool_id_idx": {
+          "name": "codes_pool_id_idx",
+          "columns": [
+            "pool_id",
+            "id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "redemption_codes_pool_id_code_pools_id_fk": {
+          "name": "redemption_codes_pool_id_code_pools_id_fk",
+          "tableFrom": "redemption_codes",
+          "tableTo": "code_pools",
+          "columnsFrom": [
+            "pool_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "code_length_check": {
+          "name": "code_length_check",
+          "value": "length(\"redemption_codes\".\"code\") BETWEEN 1 AND 100"
+        },
+        "remark_length_check": {
+          "name": "remark_length_check",
+          "value": "\"redemption_codes\".\"remark\" IS NULL OR length(\"redemption_codes\".\"remark\") <= 500"
+        },
+        "code_status_check": {
+          "name": "code_status_check",
+          "value": "\"redemption_codes\".\"status\" IN ('unclaimed', 'claimed', 'redeemed')"
+        },
+        "claim_state_check": {
+          "name": "claim_state_check",
+          "value": "(\"redemption_codes\".\"status\" != 'unclaimed' OR \"redemption_codes\".\"claimed_at\" IS NULL) AND (\"redemption_codes\".\"status\" != 'claimed' OR \"redemption_codes\".\"claimed_at\" IS NOT NULL) AND (\"redemption_codes\".\"claimed_at\" IS NOT NULL OR \"redemption_codes\".\"remark\" IS NULL)"
+        },
+        "redeemed_state_check": {
+          "name": "redeemed_state_check",
+          "value": "(\"redemption_codes\".\"status\" = 'redeemed' AND \"redemption_codes\".\"redeemed_marked_at\" IS NOT NULL) OR (\"redemption_codes\".\"status\" != 'redeemed' AND \"redemption_codes\".\"redeemed_marked_at\" IS NULL)"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

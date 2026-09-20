@@ -79,7 +79,10 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
-    "predev": "WRANGLER_HIDE_BANNER=true npm run db:migrate"
+    "predev": "WRANGLER_HIDE_BANNER=true npm run db:migrate",
+    "db:counters:check": "node scripts/counters.mjs check",
+    "db:counters:rebuild": "node scripts/counters.mjs rebuild",
+    "deploy:maintenance": "wrangler deploy src/worker/maintenance.ts --config wrangler.jsonc --assets dist/client"
   },
   "type": "module"
 }

@@ -257,7 +257,7 @@ test('领取历史为空时展示空状态', () => {
   expect(screen.getByText('暂无已领取的兑换码')).toBeVisible();
 });
 
-test('码池已删除时仍展示本地兑换码，禁止再标记使用', async () => {
+test('码池已删除时仍保留本地兑换码并允许复制', async () => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify([claimRecord]));
   mockApi({
     ...publicRoutes,
@@ -265,8 +265,6 @@ test('码池已删除时仍展示本地兑换码，禁止再标记使用', async
   });
   renderClaim();
   await waitFor(() => expect(screen.getByText(claimRecord.code)).toBeVisible());
-  expect(screen.queryByRole('button', { name: '我已使用' })).not.toBeInTheDocument();
-  expect(screen.getByText(claimRecord.code)).toBeVisible();
   expect(screen.getByRole('button', { name: '复制兑换码' })).toBeEnabled();
   expect(readRecords().records).toEqual([claimRecord]);
 });
