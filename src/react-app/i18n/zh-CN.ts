@@ -38,6 +38,7 @@ export const zh = {
     redeemedMarkedAt: '兑换标记时间（UTC）',
   },
   common: {
+    brandName: '发码啦',
     product: '兑换码发放平台',
     history: '已领取的兑换码',
     reconnect: '重新连接',

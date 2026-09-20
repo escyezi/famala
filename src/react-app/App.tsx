@@ -61,8 +61,13 @@ function App() {
           <span className="brand-icon">
             <Icon name="gift" size={22} />
           </span>
-          <span>
-            famala<span className="brand-dot">.</span>
+          <span className="brand-wordmark">
+            <span>
+              famala<span className="brand-dot">.</span>
+            </span>
+            <span className="brand-name" lang="zh-CN">
+              {t('common.brandName')}
+            </span>
           </span>
         </a>
         <span className="header-divider" />

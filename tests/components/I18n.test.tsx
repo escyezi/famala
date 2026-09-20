@@ -89,7 +89,7 @@ test('language switch survives storage failure and updates metadata without navi
   description.remove();
 });
 
-test('resources have matching keys and interpolation variables, English plurals and no Chinese', async () => {
+test('resources have matching keys and interpolation variables, English plurals and no Chinese except the brand name', async () => {
   for (const group of Object.keys(zh) as (keyof typeof zh)[]) {
     expect(Object.keys(en[group]).sort()).toEqual(Object.keys(zh[group]).sort());
     for (const key of Object.keys(zh[group])) {
@@ -98,7 +98,12 @@ test('resources have matching keys and interpolation variables, English plurals 
       const params = (value: string) =>
         [...value.matchAll(/\{\{\s*(\w+)/g)].map((m) => m[1]).sort();
       expect(params(englishText), `${group}.${key}`).toEqual(params(cn));
-      expect(englishText).not.toMatch(/\p{Script=Han}/u);
+      if (group === 'common' && key === 'brandName') {
+        expect(englishText).toBe('发码啦');
+        expect(englishText).toBe(cn);
+      } else {
+        expect(englishText).not.toMatch(/\p{Script=Han}/u);
+      }
     }
   }
   await english();

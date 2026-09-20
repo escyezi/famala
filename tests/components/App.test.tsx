@@ -83,7 +83,7 @@ test('首页发码入口等待会话确认，登录后直接返回当前空间�
   expect(location.pathname).toBe('/manage');
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(readSession).toHaveBeenCalledTimes(1);
-  await user.click(screen.getByRole('link', { name: 'famala.' }));
+  await user.click(screen.getByRole('link', { name: /^famala\.\s*发码啦$/ }));
   expect(screen.queryByRole('button', { name: /我要发码/ })).not.toBeInTheDocument();
   const manageEntry = screen.getByRole('button', { name: /发码管理/ });
   expect(manageEntry).toHaveTextContent('进入发码管理');

@@ -40,6 +40,7 @@ export const en = {
     redeemedMarkedAt: 'Redemption marked at (UTC)',
   },
   common: {
+    brandName: '发码啦',
     product: 'Redemption code distribution',
     history: 'Claimed codes',
     reconnect: 'Reconnect',

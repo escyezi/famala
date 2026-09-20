@@ -15,18 +15,34 @@
   font-size: 27px;
   font-weight: 700;
   letter-spacing: -1.2px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .brand-icon {
   display: grid;
   place-items: center;
   background: #246549;
   color: var(--color-surface);
-  width: 37px;
-  height: 37px;
+  width: 40px;
+  height: 40px;
   border-radius: 11px;
+}
+.brand-wordmark {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  line-height: 1;
 }
 .brand-dot {
   color: #42865e;
+}
+.brand-name {
+  color: #365b47;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  padding-left: 1px;
 }
 .header-divider {
   width: 1px;
@@ -56,11 +72,11 @@
 .app-header nav .github-link {
   display: inline-grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: 42px;
+  height: 42px;
   flex-shrink: 0;
   padding: 0;
-  border: 0;
+  border: 1px solid #dfe6df;
   border-radius: 8px;
   background: var(--color-surface);
   color: var(--color-primary);
@@ -72,8 +88,8 @@
   color: var(--color-primary-hover);
 }
 .language-icon {
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   display: block;
 }
 .language-icon text {
@@ -91,6 +107,7 @@
   fill: #fff;
 }
 .history-button {
+  height: 42px;
   border: 1px solid #dfe6df;
   border-radius: 8px;
   background: var(--color-surface);
@@ -495,10 +512,11 @@
   }
   .brand {
     font-size: 24px;
+    gap: 8px;
   }
   .brand-icon {
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
   }
   .product-name,
   .header-divider {
@@ -509,7 +527,9 @@
     font-size: 11px;
   }
   .history-button {
+    width: 42px;
     min-height: 42px;
+    justify-content: center;
     padding: var(--space-2);
     font-size: 11px;
     border-radius: 8px;
