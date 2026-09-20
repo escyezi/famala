@@ -13,6 +13,8 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
     "enabled": true,
+    "redact_query_string": true,
+    "traces": { "enabled": true, "head_sampling_rate": 0.01 },
   },
   "upload_source_maps": true,
   "send_metrics": false,

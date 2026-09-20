@@ -1,3 +1,4 @@
+export const SESSION_CHANGED_EVENT = 'famala:session-changed';
 import type { MessageParams } from '../shared/messages.ts';
 import { hc, parseResponse } from 'hono/client';
 import type { ClientResponse } from 'hono/client';

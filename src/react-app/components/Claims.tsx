@@ -1,3 +1,5 @@
+import { MAX_REMARK_LENGTH } from '../../shared/contracts.ts';
+import { useDialogRequest } from '../hooks/useDialogRequest.ts';
 import { useFormat } from '../i18n/format.ts';
 import { useTranslation } from 'react-i18next';
 import { toMessage } from '../../shared/messages.ts';
@@ -66,19 +68,23 @@ export function ClaimKeyDialog({
   const { t } = useTranslation();
   const [key, setKey] = useState('');
   const [error, setError] = useState<Message | null>(null);
+  const startRequest = useDialogRequest();
   const [busy, setBusy] = useState(false);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (busy || !key.trim()) return;
+    const request = startRequest();
+    if (!request) return;
     setBusy(true);
     setError(null);
     try {
-      await api(rpc.api.claim.validate.$post({ json: { claimKey: key.trim() } }));
-      onValidated(key.trim());
+      await api(rpc.api.claim.validate.$post({ json: { claimKey: key.trim() } }, request));
+      if (request.isCurrent()) onValidated(key.trim());
     } catch (e) {
-      setError(toMessage(e));
+      if (request.isCurrent()) setError(toMessage(e));
     } finally {
-      setBusy(false);
+      if (request.isCurrent()) setBusy(false);
+      request.finish();
     }
   }
   return (
@@ -284,7 +290,9 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
             <form onSubmit={claim}>
               <label htmlFor="remark">
                 {t('claim.remark')}
-                <span className="muted">{t('claim.optionalCount', { count: length })}</span>
+                <span className="muted">
+                  {t('claim.optionalCount', { limit: MAX_REMARK_LENGTH, count: length })}
+                </span>
               </label>
               <textarea
                 id="remark"
@@ -294,7 +302,9 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
                 onChange={(e) => setRemark(e.target.value)}
                 disabled={busy}
               />
-              {length > 500 && <Notice>{t('claim.remarkTooLong')}</Notice>}
+              {length > MAX_REMARK_LENGTH && (
+                <Notice>{t('claim.remarkTooLong', { limit: MAX_REMARK_LENGTH })}</Notice>
+              )}
               {available && config?.turnstileSiteKey && (
                 <Turnstile
                   busy={busy}
@@ -308,7 +318,7 @@ export function ClaimPage({ claimKey, onEnterKey }: { claimKey: string; onEnterK
               )}
               <button
                 className="button primary full claim-button"
-                disabled={!available || !token || busy || length > 500}
+                disabled={!available || !token || busy || length > MAX_REMARK_LENGTH}
                 aria-busy={busy}
               >
                 {busy && <span className="claim-spinner" aria-hidden="true" />}

@@ -42,9 +42,12 @@ The single `.env.example` contains ready-to-use local values: development mode, 
 | `npm run db:migrate:remote` | Apply remote D1 migrations |
 | `npm run db:counters:check -- --local` | Compare stored counters against an independent aggregate; exit nonzero on mismatch |
 | `npm run db:counters:rebuild -- --local --writes-paused` | Rebuild and verify counters after pausing writers |
+| `npm run db:sessions:cleanup -- --local --batches=1` | Delete at most 1,000 expired sessions per batch; requires an explicit target |
 | `npm run cf-typegen` | Regenerate Cloudflare binding types |
 
 `npm run check` does not publish the application. Component tests use jsdom; API tests use a temporary local D1 database separate from development data.
+
+The GitHub `Check` workflow runs the same command on pushes and pull requests without production credentials. Require its `check` job in repository branch protection where applicable. API cases share one temporary proxy, run serially, independently verify counters, and clear their rows after each test. Test infrastructure written in TypeScript is type-checked; JavaScript tests and scripts are covered by ESLint.
 
 ### Project structure
 
@@ -60,6 +63,8 @@ wrangler.jsonc   Cloudflare Worker, D1, and environment configuration
 Add schema changes as new migrations; do not rewrite migrations that have already been applied. Frontend and API types are shared through Hono RPC, so build and deploy them together.
 
 Stored counters are maintained by the application, without database triggers. Every detail write must execute alongside its counter update in one `DB.batch()` transaction. Use `withCounterUpdate` to keep the statements adjacent: SQL `changes()` must refer to that detail write. Test fixtures and maintenance scripts that write details directly must also maintain the counters or explicitly rebuild them with writers paused. Counter validation and rebuilds scan existing data and consume D1 quota; run them explicitly, not periodically. Both counter commands require an explicit `--local` or `--remote` target.
+
+Session cleanup is an explicit maintenance command, never a request-side scan. Choose `--local` or `--remote`; `--batches` defaults to 1 and is capped at 10. Each batch uses the expiry index and deletes at most 1,000 sessions; completed batches remain committed if a later batch fails. Set a schedule only after measuring growth. Architecture boundaries and verification notes are recorded in [the maintenance guide](docs/maintainability-implementation.zh-CN.md).
 
 ## Deployment
 
@@ -120,3 +125,5 @@ For a custom domain, add it to the Worker's **Settings → Domains & Routes → 
 Only `.env.example` is committed among environment files. `.env` and legacy `.dev.vars*` are ignored and used for local development; deployment does not upload their contents as production secrets. Never place real secrets in `vars`, source code, or frontend variables such as `VITE_*`. The application's production verification rejects public test credentials.
 
 Use HTTPS and verify the deployed application and Turnstile configuration. Export performance at the current 500-record batch size still needs validation on a separate Cloudflare test deployment: test a full dataset, measure Worker CPU (target P95 < 8 ms), D1 `rows_read`, resource-limit errors, and mobile memory usage. If the target is missed, reduce `EXPORT_BATCH_SIZE` to 200, update pagination tests, and validate again before production release.
+
+Observability uses a 1% trace sample and redacts URL query strings. Application failure logs contain only operation, stage, category, correlation ID and duration; responses expose `X-Request-ID` for support. Recheck trace volume and retention after deployment.

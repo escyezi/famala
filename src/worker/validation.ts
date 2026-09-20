@@ -1,3 +1,5 @@
+import { MAX_DELETE_CODES, isCodeFilter, isCodePageSize } from '../shared/contracts.ts';
+import type { CodeFilter, CodePageSize } from '../shared/contracts.ts';
 import { errorBody } from '../shared/messages.ts';
 import { ApiException, validationError } from './errors.ts';
 import type { MiddlewareHandler } from 'hono';
@@ -70,7 +72,7 @@ export const deleteCodesInput = validator('json', (value: unknown, c) => {
   if (
     !Array.isArray(ids) ||
     ids.length === 0 ||
-    ids.length > 50 ||
+    ids.length > MAX_DELETE_CODES ||
     !ids.every((id): id is number => typeof id === 'number' && Number.isSafeInteger(id) && id > 0)
   )
     return c.json(errorBody('INVALID_CODE_SELECTION'), 400);
@@ -102,8 +104,6 @@ export const claimInput = validator('json', (value: unknown, c) => {
     turnstileToken: data.turnstileToken,
   };
 });
-
-type CodeFilter = 'all' | 'claimed' | 'unclaimed' | 'redeemed';
 
 function exportInteger(values: string[] | undefined, fallback?: number) {
   if (!values && fallback !== undefined) return fallback;
@@ -145,10 +145,7 @@ export const exportCodesQuery: MiddlewareHandler<
   const maxId = exportInteger(query.maxId);
   const status = query.status?.[0] ?? 'all';
   if (afterId > maxId) throw new ApiException(400, 'INVALID_EXPORT_QUERY');
-  if (
-    (query.status && query.status.length !== 1) ||
-    !['all', 'unclaimed', 'claimed', 'redeemed'].includes(status)
-  )
+  if ((query.status && query.status.length !== 1) || !isCodeFilter(status))
     throw new ApiException(400, 'INVALID_FILTER');
   c.req.addValidatedData('query', { afterId, maxId, status: status as CodeFilter });
   await next();
@@ -160,7 +157,7 @@ export const codesQuery: MiddlewareHandler<
   AppEnv,
   string,
   {
-    in: { query: { page?: string; status?: CodeFilter; pageSize?: '20' | '50' } };
+    in: { query: { page?: string; status?: CodeFilter; pageSize?: CodePageSize } };
     out: { query: { page: number; status: CodeFilter; pageSize: number } };
   }
 > = async (c, next) => {
@@ -174,13 +171,10 @@ export const codesQuery: MiddlewareHandler<
   )
     throw new ApiException(400, 'INVALID_PAGE');
   const status = query.status?.[0] || 'all';
-  if (
-    (query.status && query.status.length !== 1) ||
-    (status !== 'all' && status !== 'claimed' && status !== 'unclaimed' && status !== 'redeemed')
-  )
+  if ((query.status && query.status.length !== 1) || !isCodeFilter(status))
     throw new ApiException(400, 'INVALID_FILTER');
   const size = query.pageSize?.[0] ?? '50';
-  if ((query.pageSize && query.pageSize.length !== 1) || (size !== '20' && size !== '50'))
+  if ((query.pageSize && query.pageSize.length !== 1) || !isCodePageSize(size))
     throw new ApiException(400, 'INVALID_PAGE_SIZE');
   c.req.addValidatedData('query', { page, status, pageSize: Number(size) });
   await next();

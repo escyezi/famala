@@ -1,61 +1,70 @@
+import { useDialogRequest } from '../hooks/useDialogRequest.ts';
 import { useTranslation } from 'react-i18next';
 import { toMessage } from '../../shared/messages.ts';
 import type { Message } from '../../shared/messages.ts';
 import { useState } from 'react';
-import { api, rpc } from '../api.ts';
+import { api, rpc, SESSION_CHANGED_EVENT } from '../api.ts';
 import type { Session } from '../../shared/api-types.ts';
 import { CopyButton, Dialog, Icon, Notice } from './ui.tsx';
 
 export function AuthDialog({
   onClose,
   onDone,
+  onCreated,
 }: {
   onClose: () => void;
   onDone: (session: Session) => void;
+  onCreated: (key: string) => void;
 }) {
   const { t } = useTranslation();
-  const [mode, setMode] = useState<'choose' | 'login' | 'saved'>('choose');
+  const [mode, setMode] = useState<'choose' | 'login'>('choose');
   const [key, setKey] = useState('');
-  const [newKey, setNewKey] = useState('');
-  const [newSession, setNewSession] = useState<Session | null>(null);
+  const startRequest = useDialogRequest({ abortOnUnmount: false });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Message | null>(null);
-  const [saved, setSaved] = useState(false);
   async function create() {
     if (busy) return;
+    const request = startRequest();
+    if (!request) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await api(rpc.api.spaces.$post());
-      setNewKey(result.key);
-      setNewSession({ spaceId: result.spaceId, expiresAt: result.expiresAt });
-      setMode('saved');
+      const result = await api(rpc.api.spaces.$post(undefined, request));
+      // The key is returned only once. Hand it to App even if navigation has
+      // unmounted this dialog; App owns its lifetime until the user saves it.
+      onCreated(result.key);
     } catch (e) {
-      setError(toMessage(e));
+      if (request.isCurrent()) setError(toMessage(e));
     } finally {
-      setBusy(false);
+      if (request.isCurrent()) setBusy(false);
+      // Cookie writes are not rolled back by navigation. Reconcile the current
+      // session after settlement, without publishing this dialog's old UI callback.
+      if (!request.isCurrent()) window.dispatchEvent(new Event(SESSION_CHANGED_EVENT));
+      request.finish();
     }
   }
   async function login(e: React.FormEvent) {
     e.preventDefault();
     if (busy || !key.trim()) return;
+    const request = startRequest();
+    if (!request) return;
     setBusy(true);
     setError(null);
     try {
-      const session = await api(rpc.api.login.$post({ json: { key: key.trim() } }));
-      onDone(session);
+      const session = await api(rpc.api.login.$post({ json: { key: key.trim() } }, request));
+      if (request.isCurrent()) onDone(session);
     } catch (e) {
-      setError(toMessage(e));
+      if (request.isCurrent()) setError(toMessage(e));
     } finally {
-      setBusy(false);
+      if (request.isCurrent()) setBusy(false);
+      // Cookie writes are not rolled back by navigation. Reconcile the current
+      // session after settlement, without publishing this dialog's old UI callback.
+      if (!request.isCurrent()) window.dispatchEvent(new Event(SESSION_CHANGED_EVENT));
+      request.finish();
     }
   }
   return (
-    <Dialog
-      title={mode === 'saved' ? t('auth.saveKey') : t('auth.start')}
-      onClose={onClose}
-      locked={busy || mode === 'saved'}
-    >
+    <Dialog title={t('auth.start')} onClose={onClose} locked={busy}>
       <Notice>{error}</Notice>
       {mode === 'choose' && (
         <>
@@ -124,28 +133,29 @@ export function AuthDialog({
           </div>
         </form>
       )}
-      {mode === 'saved' && (
-        <>
-          <p className="muted">{t('auth.onlyCredential')}</p>
-          <div className="secret-box">
-            <code>{newKey}</code>
-            <CopyButton value={newKey} label={t('auth.copyKey')} />
-          </div>
-          <Notice kind="info">{t('auth.keepSafe')}</Notice>
-          <label className="checkbox-label">
-            <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />
-            {t('auth.saved')}
-          </label>
-          <button
-            className="button primary full"
-            disabled={!saved || !newSession}
-            onClick={() => newSession && onDone(newSession)}
-          >
-            {t('auth.enter')}
-            <Icon name="arrow" size={17} />
-          </button>
-        </>
-      )}
+    </Dialog>
+  );
+}
+
+export function SaveKeyDialog({ value, onSaved }: { value: string; onSaved: () => void }) {
+  const { t } = useTranslation();
+  const [saved, setSaved] = useState(false);
+  return (
+    <Dialog title={t('auth.saveKey')} onClose={() => {}} locked>
+      <p className="muted">{t('auth.onlyCredential')}</p>
+      <div className="secret-box">
+        <code>{value}</code>
+        <CopyButton value={value} label={t('auth.copyKey')} />
+      </div>
+      <Notice kind="info">{t('auth.keepSafe')}</Notice>
+      <label className="checkbox-label">
+        <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />
+        {t('auth.saved')}
+      </label>
+      <button className="button primary full" disabled={!saved} onClick={onSaved}>
+        {t('auth.enter')}
+        <Icon name="arrow" size={17} />
+      </button>
     </Dialog>
   );
 }

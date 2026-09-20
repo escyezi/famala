@@ -10,7 +10,7 @@ export default defineConfig({
         test: {
           name: 'unit',
           environment: 'node',
-          include: ['tests/**/*.test.mjs'],
+          include: ['tests/**/*.test.mjs', 'tests/unit/**/*.test.ts'],
         },
       },
       {

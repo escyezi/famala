@@ -1,7 +1,9 @@
+import { setStage } from './diagnostics.ts';
+import type { DiagnosticStage } from './diagnostics.ts';
 import type { Context } from 'hono';
 import type { AppEnv } from './types.ts';
 
-type Measure = <T>(name: string, operation: () => Promise<T>) => Promise<T>;
+type Measure = <T>(name: DiagnosticStage, operation: () => Promise<T>) => Promise<T>;
 
 export async function withServerTiming<T extends Response>(
   c: Context<AppEnv>,
@@ -11,6 +13,7 @@ export async function withServerTiming<T extends Response>(
   const timings: string[] = [];
   let response: T | undefined;
   const measure: Measure = async (name, operation) => {
+    setStage(c, name);
     const start = performance.now();
     try {
       return await operation();

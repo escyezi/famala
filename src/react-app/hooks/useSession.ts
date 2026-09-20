@@ -2,7 +2,7 @@ import { toMessage } from '../../shared/messages.ts';
 import type { Message } from '../../shared/messages.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '../../shared/api-types.ts';
-import { ApiError, api, readSession, rpc } from '../api.ts';
+import { ApiError, api, readSession, rpc, SESSION_CHANGED_EVENT } from '../api.ts';
 
 // App owns the session; navigation and pool refreshes do not re-fetch it.
 export function useSession() {
@@ -45,7 +45,15 @@ export function useSession() {
 
   useEffect(() => {
     void loadSession();
-    return () => pending.current?.abort();
+    const synchronize = () => {
+      setError(null);
+      void loadSession();
+    };
+    window.addEventListener(SESSION_CHANGED_EVENT, synchronize);
+    return () => {
+      pending.current?.abort();
+      window.removeEventListener(SESSION_CHANGED_EVENT, synchronize);
+    };
   }, [loadSession]);
 
   async function logout() {

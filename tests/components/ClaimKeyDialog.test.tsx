@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { ClaimKeyDialog } from '../../src/react-app/components/Claims.tsx';
@@ -52,3 +52,29 @@ test('无效 Key 展示错误，修正后可重新校验', async () => {
   await waitFor(() => expect(onValidated).toHaveBeenCalledWith(pool.claimKey));
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
+
+test.each(['success', 'failure'] as const)(
+  '卸载后忽略%s响应并同步阻止重复提交',
+  async (outcome) => {
+    const pending = deferred<Response>();
+    const fetchMock = mockApi({ 'POST /api/claim/validate': () => pending.promise });
+    const callback = vi.fn();
+    const user = userEvent.setup();
+    const view = render(<ClaimKeyDialog onClose={vi.fn()} onValidated={callback} />);
+    await user.type(screen.getByLabelText('领码 Key'), 'test-key');
+    const form = screen.getByRole('button', { name: '前往领取' }).closest('form')!;
+    act(() => {
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    view.unmount();
+    await act(async () => {
+      pending.resolve(
+        outcome === 'success' ? json(publicPool) : json({ code: 'REQUEST_FAILED' }, 500),
+      );
+      await pending.promise;
+    });
+    expect(callback).not.toHaveBeenCalled();
+  },
+);

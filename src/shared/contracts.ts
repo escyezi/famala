@@ -6,6 +6,23 @@ export interface ClaimRecord {
   code: string;
   claimedAt: number;
 }
+export const MAX_IMPORT_CODES = 500;
+export const MAX_CODE_LENGTH = 100;
+export const MAX_REMARK_LENGTH = 500;
+export const MAX_DELETE_CODES = 50;
+export const POOL_STATUSES = ['active', 'stopped'] as const;
+export const CODE_STATUSES = ['unclaimed', 'claimed', 'redeemed'] as const;
+export const CODE_FILTERS = ['all', ...CODE_STATUSES] as const;
+export const CODE_PAGE_SIZES = ['20', '50'] as const;
+export type CodeStatus = (typeof CODE_STATUSES)[number];
+export type CodeFilter = (typeof CODE_FILTERS)[number];
+export type CodePageSize = (typeof CODE_PAGE_SIZES)[number];
+export function isCodeFilter(value: string): value is CodeFilter {
+  return CODE_FILTERS.some((item) => item === value);
+}
+export function isCodePageSize(value: string): value is CodePageSize {
+  return CODE_PAGE_SIZES.some((item) => item === value);
+}
 export const MAX_POOLS_PER_SPACE = 50;
 export const MAX_POOL_NAME_LENGTH = 50;
 export const MAX_POOL_DESCRIPTION_LENGTH = 500;
@@ -42,14 +59,15 @@ export function parseImport(text: string) {
     .split(/\r\n|\n|\r/)
     .map((code, i) => ({ code: code.trim(), line: i + 1 }))
     .filter((row) => row.code.length > 0);
-  if (rows.length > 500) throw new BusinessError('IMPORT_LIMIT');
+  if (rows.length > MAX_IMPORT_CODES) throw new BusinessError('IMPORT_LIMIT');
   if (!rows.length) throw new BusinessError('IMPORT_EMPTY');
   const seen = new Map<string, number>();
   const valid: { code: string; line: number }[] = [];
   const failures: ImportFailure[] = [];
   for (const row of rows) {
     const firstLine = seen.get(row.code);
-    if (codePointLength(row.code) > 100) failures.push(importFailure(row, 'CODE_TOO_LONG'));
+    if (codePointLength(row.code) > MAX_CODE_LENGTH)
+      failures.push(importFailure(row, 'CODE_TOO_LONG'));
     else if (row.code.includes('\0')) failures.push(importFailure(row, 'CODE_NULL'));
     else if (firstLine !== undefined)
       failures.push(importFailure(row, 'DUPLICATE_IN_BATCH', { firstLine }));
@@ -65,7 +83,7 @@ export function normalizeRemark(value: unknown): string | null {
   if (value === undefined || value === null) return null;
   if (typeof value !== 'string') throw new BusinessError('REMARK_TEXT_REQUIRED');
   const remark = value.trim();
-  if (codePointLength(remark) > 500) throw new BusinessError('REMARK_TOO_LONG');
+  if (codePointLength(remark) > MAX_REMARK_LENGTH) throw new BusinessError('REMARK_TOO_LONG');
   if (remark.includes('\0')) throw new BusinessError('REMARK_NULL');
   return remark || null;
 }

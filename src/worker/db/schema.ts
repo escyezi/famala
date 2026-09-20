@@ -1,3 +1,4 @@
+import { POOL_STATUSES, CODE_STATUSES } from '../../shared/contracts.ts';
 import { sql } from 'drizzle-orm';
 import { check, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
@@ -33,9 +34,7 @@ export const codePools = sqliteTable(
     name: text('name').notNull(),
     description: text('description'),
     claimKey: text('claim_key').notNull().unique(),
-    status: text('status', { enum: ['active', 'stopped'] })
-      .notNull()
-      .default('active'),
+    status: text('status', { enum: POOL_STATUSES }).notNull().default('active'),
     createdAt: integer('created_at').notNull(),
     totalCount: integer('total_count').notNull().default(0),
     unclaimedCount: integer('unclaimed_count').notNull().default(0),
@@ -57,9 +56,7 @@ export const redemptionCodes = sqliteTable(
       .notNull()
       .references(() => codePools.id),
     code: text('code').notNull(),
-    status: text('status', { enum: ['unclaimed', 'claimed', 'redeemed'] })
-      .notNull()
-      .default('unclaimed'),
+    status: text('status', { enum: CODE_STATUSES }).notNull().default('unclaimed'),
     claimedAt: integer('claimed_at'),
     remark: text('remark'),
     redeemedMarkedAt: integer('redeemed_marked_at'),

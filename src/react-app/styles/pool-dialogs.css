@@ -1,0 +1,36 @@
+/* pool-dialogs: base and responsive rules owned by this component. */
+
+.delete-code-value {
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+.code-input {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.failures {
+  max-height: 220px;
+}
+.failures td code {
+  max-width: 220px;
+  display: block;
+}
+.failures td:last-child {
+  min-width: 140px;
+}
+.import-result {
+  margin-top: 15px;
+}
+.delete-codes-list {
+  max-height: 220px;
+  overflow: auto;
+  list-style: none;
+  padding: 12px;
+  margin: 12px 0;
+  background: var(--color-page);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}

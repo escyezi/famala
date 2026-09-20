@@ -1,4 +1,11 @@
 :root {
+  --color-table-header: #f7f9f5;
+  --color-records-border: #e3e9e1;
+  --color-row-border: #e8ede5;
+  --color-row-selected: #f3f8f2;
+  --color-danger-text: #a23d35;
+  --color-danger-surface: #fff0ed;
+
   --color-text: #25352f;
   --color-page: #f8faf8;
   --color-surface: #fff;

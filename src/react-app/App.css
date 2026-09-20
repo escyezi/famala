@@ -3,5 +3,8 @@
 @import './styles/common.css';
 @import './styles/home.css';
 @import './styles/manager.css';
+@import './styles/pool-list.css';
+@import './styles/pool-detail.css';
 @import './styles/records.css';
+@import './styles/pool-dialogs.css';
 @import './styles/claims.css';

@@ -1,3 +1,4 @@
+import { CODE_PAGE_SIZES, isCodePageSize } from '../../shared/contracts.ts';
 import { useTranslation } from 'react-i18next';
 import { useFormat } from '../i18n/format.ts';
 import type { PoolDetails } from '../hooks/usePoolDetails.ts';
@@ -23,10 +24,15 @@ export function RecordsPagination({ details }: { details: PoolDetails }) {
           aria-label={t('manage.pageSize')}
           value={pageSize}
           disabled={controlsLocked}
-          onChange={(event) => changePageSize(event.target.value === '50' ? '50' : '20')}
+          onChange={(event) => {
+            if (isCodePageSize(event.target.value)) changePageSize(event.target.value);
+          }}
         >
-          <option value="20">{t('manage.pageRows', { count: 20 })}</option>
-          <option value="50">{t('manage.pageRows', { count: 50 })}</option>
+          {CODE_PAGE_SIZES.map((size) => (
+            <option key={size} value={size}>
+              {t('manage.pageRows', { count: Number(size) })}
+            </option>
+          ))}
         </select>
         <button
           className="records-icon"

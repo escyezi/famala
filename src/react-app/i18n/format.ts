@@ -1,6 +1,12 @@
 import { useTranslation } from 'react-i18next';
+import {
+  MAX_CODE_LENGTH,
+  MAX_IMPORT_CODES,
+  MAX_POOL_DESCRIPTION_LENGTH,
+  MAX_POOL_NAME_LENGTH,
+  MAX_REMARK_LENGTH,
+} from '../../shared/contracts.ts';
 import type { Message } from '../../shared/messages.ts';
-import { MAX_POOL_NAME_LENGTH, MAX_POOL_DESCRIPTION_LENGTH } from '../../shared/contracts.ts';
 import { zh } from './zh-CN.ts';
 
 export function useFormat() {
@@ -43,6 +49,9 @@ export function useFormat() {
           value.params?.limit ??
           (key === 'POOL_NAME_TOO_LONG' ? MAX_POOL_NAME_LENGTH : MAX_POOL_DESCRIPTION_LENGTH),
       });
+    if (key === 'IMPORT_LIMIT') return t('errors.IMPORT_LIMIT', { limit: MAX_IMPORT_CODES });
+    if (key === 'CODE_TOO_LONG') return t('errors.CODE_TOO_LONG', { limit: MAX_CODE_LENGTH });
+    if (key === 'REMARK_TOO_LONG') return t('errors.REMARK_TOO_LONG', { limit: MAX_REMARK_LENGTH });
     return t(`errors.${key}`);
   };
   return { number, dateTime, compactDateTime, message };

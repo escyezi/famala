@@ -2,7 +2,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import App from '../../src/react-app/App.tsx';
-import { AuthDialog } from '../../src/react-app/components/AuthDialog.tsx';
+import { AuthDialog, SaveKeyDialog } from '../../src/react-app/components/AuthDialog.tsx';
 import { ClaimPage, HistoryDialog } from '../../src/react-app/components/Claims.tsx';
 import { Manager } from '../../src/react-app/components/Manager.tsx';
 import { ImportDialog, PoolNameDialog } from '../../src/react-app/components/PoolDialogs.tsx';
@@ -159,7 +159,7 @@ test('component reactivity: login draft and existing error translate in the same
   mockApi({ 'POST /api/login': login });
   const user = userEvent.setup();
   const done = vi.fn();
-  render(<AuthDialog onClose={vi.fn()} onDone={done} />);
+  render(<AuthDialog onClose={vi.fn()} onDone={done} onCreated={vi.fn()} />);
   await user.click(screen.getByRole('button', { name: /使用已有 Key/ }));
   const input = screen.getByLabelText('发码 Key');
   await user.type(input, 'd_keep-my-input');
@@ -176,22 +176,17 @@ test('component reactivity: login draft and existing error translate in the same
   expect(done).not.toHaveBeenCalled();
 });
 
-test('English workspace creation requires confirmation of saving the key', async () => {
+test('English key confirmation requires saving the key', async () => {
   await english();
-  mockApi({
-    'POST /api/spaces': () =>
-      json({ ...session, key: 'd_example' } satisfies ApiResponses['createSpace'], 201),
-  });
   const done = vi.fn();
   const user = userEvent.setup();
-  render(<AuthDialog onClose={vi.fn()} onDone={done} />);
-  await user.click(screen.getByRole('button', { name: /Generate a new key/ }));
+  render(<SaveKeyDialog value="d_example" onSaved={done} />);
   expect(await screen.findByText('d_example')).toBeVisible();
   const enter = screen.getByRole('button', { name: 'Open workspace' });
   expect(enter).toBeDisabled();
   await user.click(screen.getByRole('checkbox'));
   await user.click(enter);
-  expect(done).toHaveBeenCalledExactlyOnceWith(session);
+  expect(done).toHaveBeenCalledOnce();
 });
 
 test('English code pool creation preserves user content', async () => {
@@ -278,7 +273,7 @@ test('responses without error codes do not leak server text into English UI', as
   await english();
   mockApi({ 'POST /api/login': () => json({ error: '任意旧中文错误' }, 500) });
   const user = userEvent.setup();
-  render(<AuthDialog onClose={vi.fn()} onDone={vi.fn()} />);
+  render(<AuthDialog onClose={vi.fn()} onDone={vi.fn()} onCreated={vi.fn()} />);
   await user.click(screen.getByRole('button', { name: /Use an existing key/ }));
   await user.type(screen.getByLabelText('Distributor key'), 'd_test');
   await user.click(screen.getByRole('button', { name: 'Open workspace' }));
@@ -410,7 +405,7 @@ test('English login succeeds with a trimmed distributor key', async () => {
   mockApi({ 'POST /api/login': login });
   const done = vi.fn();
   const user = userEvent.setup();
-  render(<AuthDialog onClose={vi.fn()} onDone={done} />);
+  render(<AuthDialog onClose={vi.fn()} onDone={done} onCreated={vi.fn()} />);
   await user.click(screen.getByRole('button', { name: /Use an existing key/ }));
   await user.type(screen.getByLabelText('Distributor key'), '  d_saved-key  ');
   await user.click(screen.getByRole('button', { name: 'Open workspace' }));

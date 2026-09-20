@@ -1,0 +1,249 @@
+/* pool-detail: base and responsive rules owned by this component. */
+
+.pool-detail {
+  background: var(--color-surface);
+  border: 1px solid #e1e8dc;
+  border-radius: 12px;
+  padding: var(--space-6);
+}
+.pool-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+.pool-back svg {
+  transform: rotate(180deg);
+}
+.pool-page-title {
+  min-width: 0;
+  flex: 1;
+}
+.pool-title-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.pool-page-title p {
+  font-size: 11px;
+  margin-top: 4px;
+}
+.pool-detail-page > .notice {
+  margin: 0;
+  flex-shrink: 0;
+}
+.pool-detail-page .pool-detail {
+  padding: 16px 20px;
+}
+.pool-overview {
+  flex-shrink: 0;
+}
+.pool-overview-tools {
+  max-width: 100%;
+}
+.pool-overview-tools .button {
+  white-space: nowrap;
+  height: 36px;
+}
+.pool-overview-tools .pool-main-action {
+  width: 128px;
+}
+.share-key {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  border-top: 1px solid #edf2e8;
+  padding-top: 10px;
+  margin-top: 10px;
+}
+.share-key code {
+  min-width: 0;
+  flex: 1;
+  color: var(--color-workspace-muted);
+  font-size: 11px;
+}
+.pool-actions-menu {
+  position: relative;
+}
+.pool-actions-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: 156px;
+  padding: 6px;
+  border: 1px solid #e0e7dd;
+  border-radius: 9px;
+  background: var(--color-surface);
+  box-shadow: 0 8px 24px #25352f1a;
+  z-index: 5;
+}
+.pool-actions-panel button {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  text-align: left;
+  font-size: 12px;
+}
+.pool-actions-panel button:hover:not(:disabled) {
+  background: #f1f6f1;
+}
+.pool-actions-danger {
+  border-top: 1px solid #edf2e8;
+  padding-top: 5px;
+  margin-top: 5px;
+}
+.pool-actions-danger button {
+  color: var(--color-danger-text);
+}
+.pool-actions-danger button:hover:not(:disabled) {
+  background: var(--color-danger-surface);
+}
+@media (max-width: 1050px) {
+  .pool-detail {
+    padding: var(--space-5);
+  }
+}
+@media (max-width: 760px) {
+  .pool-detail {
+    padding: var(--space-4);
+  }
+  .pool-detail-page .pool-detail {
+    padding: 14px;
+  }
+  .pool-overview-tools .actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 6px;
+  }
+  .pool-overview-tools {
+    width: 100%;
+  }
+  .pool-overview-tools .button {
+    padding: 7px 9px;
+    font-size: 12px;
+  }
+  .pool-overview-tools .pool-main-action {
+    width: 100%;
+    padding-inline: 6px;
+    gap: 4px;
+  }
+}
+.manager-main.manager-detail-main {
+  max-width: 1320px;
+  height: calc(100dvh - 80px);
+  min-height: 0;
+  overflow: hidden;
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+.pool-detail-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: 10px;
+}
+.pool-page-header .pool-main-action:disabled {
+  opacity: 1;
+}
+.pool-page-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+}
+.pool-page-title h1 {
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  font-size: 20px;
+}
+.pool-page-header .pool-back {
+  white-space: nowrap;
+  margin: 0;
+}
+.pool-page-header .pool-overview-tools {
+  flex-shrink: 0;
+}
+.pool-detail-page .pool-overview {
+  padding: 0 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.pool-overview-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.pool-stats > div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.pool-stats dt {
+  color: var(--color-workspace-muted);
+  font-size: 12px;
+}
+.pool-stats dd {
+  font-weight: 600;
+  line-height: 1.15;
+  margin: 0;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.pool-stats .remaining-stat dd {
+  color: var(--color-primary);
+  font-size: 22px;
+}
+.pool-stats-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--color-workspace-muted);
+}
+.pool-created {
+  margin: 0;
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .manager-main.manager-detail-main {
+    height: calc(100dvh - 66px);
+  }
+  .pool-page-header {
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .pool-page-header .pool-overview-tools {
+    order: 3;
+    width: 100%;
+  }
+  .pool-page-header .pool-overview-tools .actions {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .pool-page-header .pool-overview-tools .pool-main-action {
+    width: auto;
+  }
+}
+@media (pointer: coarse) {
+  .pool-detail-page button {
+    min-height: 44px;
+  }
+}
+
+.pool-stats {
+  display: flex;
+  align-items: baseline;
+  margin: 0;
+  gap: 20px;
+  flex-wrap: wrap;
+}

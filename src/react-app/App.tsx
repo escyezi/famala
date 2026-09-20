@@ -1,6 +1,6 @@
 import { useTranslation, Trans } from 'react-i18next';
 import { useEffect, useState } from 'react';
-import { AuthDialog } from './components/AuthDialog.tsx';
+import { AuthDialog, SaveKeyDialog } from './components/AuthDialog.tsx';
 import { ClaimKeyDialog, ClaimPage, HistoryDialog } from './components/Claims.tsx';
 import { Manager } from './components/Manager.tsx';
 import { Icon, Notice } from './components/ui.tsx';
@@ -16,6 +16,10 @@ function App() {
     search: location.search,
   }));
   const [modal, setModal] = useState<'auth' | 'claim' | 'history' | null>(null);
+  // Keep one-time credentials outside route/dialog lifetimes. Multiple creates
+  // already in flight must each be acknowledged, even if they settle out of order.
+  const [unsavedKeys, setUnsavedKeys] = useState<string[]>([]);
+  const unsavedKey = unsavedKeys[0];
   const { session, loading, error, loggingOut, acceptSession, reload, logout } = useSession();
   useEffect(() => {
     const changed = () => {
@@ -194,8 +198,25 @@ function App() {
           <span>{t('home.rules')}</span>
         </footer>
       )}
-      {(modal === 'auth' || needsLogin) && (
+      {unsavedKey && (
+        <SaveKeyDialog
+          key={unsavedKey}
+          value={unsavedKey}
+          onSaved={() => {
+            setUnsavedKeys((keys) => keys.filter((key) => key !== unsavedKey));
+            // Use the actual Cookie session; a later auth response may have
+            // replaced the session returned when this key was created.
+            if (managing) setModal(null);
+            else go('/manage');
+          }}
+        />
+      )}
+      {!unsavedKey && (modal === 'auth' || needsLogin) && (
         <AuthDialog
+          onCreated={(key) => {
+            setUnsavedKeys((keys) => [...keys, key]);
+            void reload();
+          }}
           onClose={() => {
             setModal(null);
             if (managing) go('/');
@@ -210,13 +231,13 @@ function App() {
           }}
         />
       )}
-      {modal === 'claim' && (
+      {!unsavedKey && modal === 'claim' && (
         <ClaimKeyDialog
           onClose={() => setModal(null)}
           onValidated={(claimKey) => go(`/claim?key=${encodeURIComponent(claimKey)}`)}
         />
       )}
-      {modal === 'history' && <HistoryDialog onClose={() => setModal(null)} />}
+      {!unsavedKey && modal === 'history' && <HistoryDialog onClose={() => setModal(null)} />}
     </>
   );
 }

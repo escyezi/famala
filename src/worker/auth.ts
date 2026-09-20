@@ -1,3 +1,4 @@
+import { setStage } from './diagnostics.ts';
 import { errorBody } from '../shared/messages.ts';
 import { and, eq, gt } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
@@ -42,6 +43,7 @@ export function clearSession(c: Context<AppEnv>) {
   });
 }
 export const requireSession = createMiddleware<AppEnv>(async (c, next) => {
+  setStage(c, 'session');
   const token = getCookie(c, COOKIE);
   if (!token || !/^s_[A-Za-z0-9_-]{43}$/.test(token)) return c.json(errorBody('UNAUTHORIZED'), 401);
   const session = await drizzle(c.env.DB)
@@ -61,5 +63,6 @@ export const requireSession = createMiddleware<AppEnv>(async (c, next) => {
   c.set('spaceId', session.spaceId);
   c.set('sessionId', session.id);
   c.set('expiresAt', session.expiresAt);
+  setStage(c, 'operation');
   await next();
 });

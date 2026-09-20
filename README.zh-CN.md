@@ -42,9 +42,12 @@ npm run dev
 | `npm run db:migrate:remote` | 应用远程 D1 迁移 |
 | `npm run db:counters:check -- --local` | 用独立聚合校验持久化计数，不一致时以非零状态退出 |
 | `npm run db:counters:rebuild -- --local --writes-paused` | 暂停写入后重建并校验计数 |
+| `npm run db:sessions:cleanup -- --local --batches=1` | 每批最多清理 1,000 条过期会话，必须明确指定目标 |
 | `npm run cf-typegen` | 重新生成 Cloudflare 绑定类型 |
 
 `npm run check` 不会发布应用。组件测试使用 jsdom；API 测试使用独立于开发数据的临时本地 D1 数据库。
+
+GitHub 的 `Check` workflow 会在推送和 PR 时执行相同命令，无需生产凭证。可在仓库分支保护中将 `check` 作业设为必需检查。API 用例共用一个临时代理并串行执行，每项测试独立校验计数器后清理数据。TypeScript 测试辅助工具纳入类型检查，JavaScript 测试和脚本纳入 ESLint。
 
 ### 项目结构
 
@@ -60,6 +63,8 @@ wrangler.jsonc   Cloudflare Worker、D1 和环境配置
 数据库结构变更通过新增迁移维护，不改写已应用的迁移。前后端通过 Hono RPC 共享接口类型，应一同构建和部署。
 
 持久化计数由应用维护，不使用数据库触发器。每次明细写入必须与计数更新放入同一个 `DB.batch()` 事务。使用 `withCounterUpdate` 保持两条语句相邻，确保 SQL `changes()` 指向该次明细写入。直接写入明细的测试数据准备和维护脚本，也必须同步维护计数，或在暂停写入后显式重建。计数校验与重建会扫描现有数据并消耗 D1 额度，应按需显式执行，不定时运行。两种计数命令都要求明确指定 `--local` 或 `--remote` 目标。
+
+会话清理是显式维护命令，不在业务请求中扫描。必须选择 `--local` 或 `--remote`；`--batches` 默认 1、最多 10。每批利用过期时间索引，最多删除 1,000 条会话；后续批次失败不会回滚已完成批次。执行频率应在测量增长量后决定。模块边界与验收记录见[维护说明](docs/maintainability-implementation.zh-CN.md)。
 
 ## 部署
 
@@ -120,3 +125,5 @@ wrangler.jsonc   Cloudflare Worker、D1 和环境配置
 环境变量文件只提交 `.env.example`。`.env` 和旧版 `.dev.vars*` 被 Git 忽略，用于本地开发；部署不会将其内容自动上传为生产密钥。不要将真实密钥写入 `vars`、源码或 `VITE_*` 等前端变量。应用的生产验证会拒绝公开测试密钥。
 
 使用 HTTPS，并验证线上应用和 Turnstile 配置。当前每批 500 条的导出性能仍需在独立 Cloudflare 测试部署上验证：使用满量数据，测量 Worker CPU（目标 P95 < 8 ms）、D1 `rows_read`、资源超限错误及移动设备内存占用。如果不达标，将 `EXPORT_BATCH_SIZE` 降至 200，更新分页测试，并在生产发布前重新验证。
+
+可观测性配置使用 1% tracing 采样，并移除 URL 查询参数。应用异常日志仅包含操作名、阶段、分类、关联 ID 和耗时；响应通过 `X-Request-ID` 提供定位信息。部署后应复核采样量及保留策略。

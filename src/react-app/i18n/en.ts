@@ -201,9 +201,9 @@ export const en = {
     importHelp:
       'Import into <strong>{{name}}</strong>. Enter one code per line. Invalid lines will be skipped. Each pool holds up to {{limit, number}} codes, including claimed and redeemed codes. Lines exceeding capacity will fail.',
     codeInput: 'Codes to import',
-    importLimit: '{{count, number}} / 500 codes',
+    importLimit: '{{count, number}} / {{limit, number}} codes',
     importRules:
-      'Up to 100 characters per code. Blank lines and surrounding whitespace are ignored. Codes are case-sensitive.',
+      'Up to {{limit, number}} characters per code. Blank lines and surrounding whitespace are ignored. Codes are case-sensitive.',
     importResult: 'Import complete: {{succeeded}} succeeded, {{failed}} failed.',
     originalLine: 'Original line',
     failureReason: 'Failure reason',
@@ -279,9 +279,10 @@ export const en = {
     loadFailed: 'Claim details are temporarily unavailable.',
     enterAgain: 'Enter another claim key',
     remark: 'Remark',
-    optionalCount: 'Optional · {{count, number}}/500',
+    optionalCount: 'Optional · {{count, number}}/{{limit, number}}',
     remarkPlaceholder: 'Leave a message for the developer',
-    remarkTooLong: 'Your remark must be 500 characters or fewer. Edit it before claiming.',
+    remarkTooLong:
+      'Your remark must be {{limit, number}} characters or fewer. Edit it before claiming.',
     unconfigured: 'Human verification is not configured. Contact the distributor to claim a code.',
     refresh: 'Refresh availability',
     saveNote: 'Claim records are saved only in this browser. Copy and save your code now.',
@@ -335,14 +336,15 @@ export const en = {
     INVALID_FILTER: 'Invalid code status.',
     INVALID_PAGE_SIZE: 'Choose 20 or 50 rows per page.',
     UNAUTHORIZED: 'Please sign in again with your distributor key.',
-    IMPORT_LIMIT: 'Import up to 500 codes at a time. Split them into smaller batches.',
+    IMPORT_LIMIT:
+      'Import up to {{limit, number}} codes at a time. Split them into smaller batches.',
     IMPORT_EMPTY: 'Enter redemption codes.',
-    CODE_TOO_LONG: 'More than 100 characters',
+    CODE_TOO_LONG: 'More than {{limit, number}} characters',
     CODE_NULL: 'Contains an unsupported null character',
     DUPLICATE_IN_BATCH: 'Duplicate of line {{firstLine}} in this batch',
     DUPLICATE_IN_POOL: 'This code already exists in the pool',
     REMARK_TEXT_REQUIRED: 'The remark must be plain text.',
-    REMARK_TOO_LONG: 'The remark must be 500 characters or fewer.',
+    REMARK_TOO_LONG: 'The remark must be {{limit, number}} characters or fewer.',
     REMARK_NULL: 'The remark contains an unsupported null character.',
     STORAGE_READ_FAILED:
       'Local claim records could not be read. They may be damaged or storage may be blocked. Keep your copied codes safe.',
